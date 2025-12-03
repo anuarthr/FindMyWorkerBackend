@@ -1,13 +1,14 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from .models import WorkerProfile
 
 User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'avatar', 'is_verified']
-        read_only_fields = ['id', 'role', 'email', 'is_verified']
+        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'avatar']
+        read_only_fields = ['id', 'role', 'email']
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -25,3 +26,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             last_name=validated_data.get('last_name', '')
         )
         return user
+    
+class WorkerProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkerProfile
+        fields = ['profession', 'bio', 'years_experience', 'hourly_rate', 'latitude', 'longitude', 'is_verified', 'average_rating']
+        read_only_fields = ['is_verified', 'average_rating']
