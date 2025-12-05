@@ -31,17 +31,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 class WorkerProfileSerializer(serializers.ModelSerializer):
     latitude = serializers.FloatField(write_only=True, required=False)
     longitude = serializers.FloatField(write_only=True, required=False)
-    
     lat = serializers.SerializerMethodField()
     lng = serializers.SerializerMethodField()
 
     class Meta:
         model = WorkerProfile
         fields = [
-            'profession', 'bio', 'years_experience', 
-            'hourly_rate', 'is_verified', 'average_rating',
-            'latitude', 'longitude', #(POST/PATCH)
-            'lat', 'lng'             #(GET)
+            'profession', 'bio', 'years_experience', 'hourly_rate', 
+            'is_verified', 'average_rating',
+            'latitude', 'longitude',
+            'lat', 'lng'
         ]
         read_only_fields = ['is_verified', 'average_rating']
 
@@ -56,6 +55,5 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
         lng = validated_data.pop('longitude', None)
 
         if lat is not None and lng is not None:
-            instance.location = Point(lng, lat, srid=4326) #(x=lng, y=lat)
-        
+            instance.location = Point(float(lng), float(lat), srid=4326)
         return super().update(instance, validated_data)
