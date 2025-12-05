@@ -37,6 +37,7 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkerProfile
         fields = [
+            'id',
             'profession', 'bio', 'years_experience', 'hourly_rate', 
             'is_verified', 'average_rating',
             'latitude', 'longitude',
