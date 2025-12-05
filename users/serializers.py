@@ -31,25 +31,32 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 class WorkerProfileSerializer(serializers.ModelSerializer):
     latitude = serializers.FloatField(write_only=True, required=False)
     longitude = serializers.FloatField(write_only=True, required=False)
-    lat = serializers.SerializerMethodField()
-    lng = serializers.SerializerMethodField()
 
     class Meta:
         model = WorkerProfile
         fields = [
-            'id',
-            'profession', 'bio', 'years_experience', 'hourly_rate', 
-            'is_verified', 'average_rating',
-            'latitude', 'longitude',
-            'lat', 'lng'
+            'id', 
+            'profession', 
+            'bio', 
+            'years_experience', 
+            'hourly_rate', 
+            'is_verified', 
+            'average_rating',
+            'latitude', 
+            'longitude'
         ]
         read_only_fields = ['is_verified', 'average_rating']
 
-    def get_lat(self, obj):
-        return obj.location.y if obj.location else None
-
-    def get_lng(self, obj):
-        return obj.location.x if obj.location else None
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        
+        if instance.location:
+            data['latitude'] = instance.location.y
+            data['longitude'] = instance.location.x
+        else:
+            data['latitude'] = None
+            data['longitude'] = None
+        return data
 
     def update(self, instance, validated_data):
         lat = validated_data.pop('latitude', None)
