@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import WorkerProfile
+from django.contrib.gis.geos import Point
 
 User = get_user_model()
 
@@ -28,7 +29,33 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return user
     
 class WorkerProfileSerializer(serializers.ModelSerializer):
+    latitude = serializers.FloatField(write_only=True, required=False)
+    longitude = serializers.FloatField(write_only=True, required=False)
+    
+    lat = serializers.SerializerMethodField()
+    lng = serializers.SerializerMethodField()
+
     class Meta:
         model = WorkerProfile
-        fields = ['profession', 'bio', 'years_experience', 'hourly_rate', 'latitude', 'longitude', 'is_verified', 'average_rating']
+        fields = [
+            'profession', 'bio', 'years_experience', 
+            'hourly_rate', 'is_verified', 'average_rating',
+            'latitude', 'longitude', #(POST/PATCH)
+            'lat', 'lng'             #(GET)
+        ]
         read_only_fields = ['is_verified', 'average_rating']
+
+    def get_lat(self, obj):
+        return obj.location.y if obj.location else None
+
+    def get_lng(self, obj):
+        return obj.location.x if obj.location else None
+
+    def update(self, instance, validated_data):
+        lat = validated_data.pop('latitude', None)
+        lng = validated_data.pop('longitude', None)
+
+        if lat is not None and lng is not None:
+            instance.location = Point(lng, lat, srid=4326) #(x=lng, y=lat)
+        
+        return super().update(instance, validated_data)

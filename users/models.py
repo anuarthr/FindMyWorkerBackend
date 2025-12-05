@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from .managers import CustomUserManager
+from django.contrib.gis.db import models as geomodels
 
 class User(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
@@ -34,8 +35,7 @@ class WorkerProfile(models.Model):
     bio = models.TextField(blank=True)
     years_experience = models.PositiveIntegerField(default=0)
     hourly_rate = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    latitude = models.FloatField(null=True, blank=True)
-    longitude = models.FloatField(null=True, blank=True)
+    location = geomodels.PointField(null=True, blank=True, srid=4326) 
     is_verified = models.BooleanField(default=False)
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.0)
 
