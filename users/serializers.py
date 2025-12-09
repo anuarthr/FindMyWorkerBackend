@@ -29,6 +29,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return user
     
 class WorkerProfileSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True) 
     latitude = serializers.FloatField(write_only=True, required=False)
     longitude = serializers.FloatField(write_only=True, required=False)
 
@@ -36,6 +37,7 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
         model = WorkerProfile
         fields = [
             'id', 
+            'user',
             'profession', 
             'bio', 
             'years_experience', 
