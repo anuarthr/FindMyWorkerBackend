@@ -1,0 +1,114 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-12-10 19:15-0500\n"
+"PO-Revision-Date: 2025-12-10 18:15-0500\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: English <en@li.org>\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: core/settings.py:110
+msgid "Spanish"
+msgstr "Spanish"
+
+#: core/settings.py:111
+msgid "English"
+msgstr "English"
+
+#: users/managers.py:7
+msgid "Email is required"
+msgstr "Email is required"
+
+#: users/managers.py:21
+msgid "Superuser debe tener is_staff=True."
+msgstr "Superuser must have is_staff=True."
+
+#: users/models.py:9
+msgid "Administrator"
+msgstr "Administrator"
+
+#: users/models.py:10
+msgid "Client"
+msgstr "Client"
+
+#: users/models.py:11
+msgid "Worker"
+msgstr "Worker"
+
+#: users/models.py:12
+msgid "Company"
+msgstr "Company"
+
+#: users/models.py:15
+msgid "First Name"
+msgstr "First Name"
+
+#: users/models.py:16
+msgid "Last Name"
+msgstr "Last Name"
+
+#: users/models.py:35
+msgid "Plumber"
+msgstr "Plumber"
+
+#: users/models.py:36
+msgid "Electrician"
+msgstr "Electrician"
+
+#: users/models.py:37
+msgid "Mason"
+msgstr "Mason"
+
+#: users/models.py:38
+msgid "Painter"
+msgstr "Painter"
+
+#: users/models.py:39
+msgid "Carpenter"
+msgstr "Carpenter"
+
+#: users/models.py:40
+msgid "Other"
+msgstr "Other"
+
+#: users/models.py:43
+msgid "Profession"
+msgstr "Profession"
+
+#: users/models.py:48
+msgid "Biography"
+msgstr "Biography"
+
+#: users/models.py:49
+msgid "Years of Experience"
+msgstr "Years of Experience"
+
+#: users/models.py:50
+msgid "Hourly Rate"
+msgstr "Hourly Rate"
+
+#: users/models.py:51
+msgid "Location"
+msgstr "Location"
+
+#: users/models.py:52
+msgid "Verified"
+msgstr "Verified"
+
+#: users/models.py:53
+msgid "Average Rating"
+msgstr "Average Rating"
+
+#: users/serializers.py:75
+msgid "No se encontró una cuenta activa con estas credenciales."
+msgstr "No active account found with the given credentials."

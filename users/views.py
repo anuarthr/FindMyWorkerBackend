@@ -4,9 +4,10 @@ from .serializers import UserSerializer, UserRegistrationSerializer
 from django.contrib.auth import get_user_model
 from rest_framework.response import Response
 from .models import WorkerProfile
-from .serializers import WorkerProfileSerializer
+from .serializers import WorkerProfileSerializer, CustomTokenObtainPairSerializer
 from rest_framework import generics, permissions, viewsets
 from rest_framework.decorators import action
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 User = get_user_model()
 
@@ -49,3 +50,6 @@ class WorkerAdminViewSet(viewsets.ReadOnlyModelViewSet):
         worker.is_verified = True
         worker.save()
         return Response({'status': 'approved', 'id': worker.id})
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
