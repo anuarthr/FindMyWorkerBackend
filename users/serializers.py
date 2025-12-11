@@ -2,6 +2,8 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import WorkerProfile
 from django.contrib.gis.geos import Point
+from django.utils.translation import gettext_lazy as _
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 User = get_user_model()
 
@@ -67,3 +69,12 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
         if lat is not None and lng is not None:
             instance.location = Point(float(lng), float(lat), srid=4326)
         return super().update(instance, validated_data)
+    
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    default_error_messages = {
+        'no_active_account': _('No se encontró una cuenta activa con estas credenciales.')
+    }
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        return data
