@@ -48,3 +48,46 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
             )
         
         return value
+
+class ServiceOrderStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceOrder
+        fields = ['status']
+
+    def validate_status(self, value):
+        instance = self.instance
+        current_status = instance.status
+
+        valid_transitions = {
+            'PENDING': ['ACCEPTED', 'CANCELLED'],
+            'ACCEPTED': ['IN_ESCROW', 'CANCELLED'],
+            'IN_ESCROW': ['COMPLETED'],
+            'COMPLETED': [], 
+            'CANCELLED': [],
+        }
+
+        allowed_statuses = valid_transitions.get(current_status, [])
+
+        if value not in allowed_statuses:
+            raise serializers.ValidationError(
+                _(f"Cannot transition from {current_status} to {value}.")
+            )
+
+        return value
+
+    def update(self, instance, validated_data):
+        new_status = validated_data.get('status')
+        
+        if new_status == 'ACCEPTED':
+            #Crear ChatRoom para esta orden (HU6)
+            pass
+        
+        if new_status == 'IN_ESCROW':
+            pass
+        
+        if new_status == 'COMPLETED':
+            # TODO: Marcar chat como solo lectura
+            # TODO: Habilitar formulario de Review
+            pass
+
+        return super().update(instance, validated_data)
