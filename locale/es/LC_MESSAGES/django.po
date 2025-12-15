@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-15 15:36-0500\n"
+"POT-Creation-Date: 2025-12-15 17:51-0500\n"
 "PO-Revision-Date: 2025-12-10 18:15-0500\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: Spanish <es@li.org>\n"
@@ -27,67 +27,67 @@ msgstr "Inglés"
 
 #: orders/models.py:8
 msgid "Pending"
-msgstr ""
+msgstr "Pendiente"
 
 #: orders/models.py:9
 msgid "Accepted"
-msgstr ""
+msgstr "Aceptada"
 
 #: orders/models.py:10
 msgid "In Escrow"
-msgstr ""
+msgstr "En Garantía"
 
 #: orders/models.py:11
 msgid "Completed"
-msgstr ""
+msgstr "Completada"
 
 #: orders/models.py:12
 msgid "Cancelled"
-msgstr ""
+msgstr "Cancelada"
 
 #: orders/models.py:18 users/models.py:10
 msgid "Client"
-msgstr "Cliente"
+msgstr "Client"
 
 #: orders/models.py:24 users/models.py:11
 msgid "Worker"
-msgstr "Trabajador"
+msgstr "Worker"
 
 #: orders/models.py:27
 msgid "Job Description"
-msgstr ""
+msgstr "Descripción del trabajo"
 
 #: orders/models.py:33
 msgid "Status"
-msgstr ""
+msgstr "Estado"
 
 #: orders/models.py:40
 msgid "Agreed Price"
-msgstr ""
+msgstr "Precio acordado"
 
 #: orders/models.py:44
 msgid "Created At"
-msgstr ""
+msgstr "Fecha de creación"
 
 #: orders/models.py:48
 msgid "Updated At"
-msgstr ""
+msgstr "Última actualización"
 
 #: orders/models.py:52
 msgid "Service Order"
-msgstr ""
+msgstr "Orden de servicio"
 
 #: orders/models.py:53
 msgid "Service Orders"
-msgstr ""
+msgstr "Órdenes de servicios"
 
 #: orders/serializers.py:42
 msgid "You cannot create an order for yourself."
-msgstr ""
+msgstr "No puedes crear una orden para ti mismo."
 
 #: orders/serializers.py:47
 msgid "This worker is not verified yet."
-msgstr ""
+msgstr "Este trabajador aún no está verificado"
 
 #: users/managers.py:7
 msgid "Email is required"

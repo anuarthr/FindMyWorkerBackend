@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-15 15:36-0500\n"
+"POT-Creation-Date: 2025-12-15 17:52-0500\n"
 "PO-Revision-Date: 2025-12-10 18:15-0500\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: English <en@li.org>\n"
@@ -27,23 +27,23 @@ msgstr "English"
 
 #: orders/models.py:8
 msgid "Pending"
-msgstr ""
+msgstr "Pending"
 
 #: orders/models.py:9
 msgid "Accepted"
-msgstr ""
+msgstr "Accepted"
 
 #: orders/models.py:10
 msgid "In Escrow"
-msgstr ""
+msgstr "In Escrow"
 
 #: orders/models.py:11
 msgid "Completed"
-msgstr ""
+msgstr "Completed"
 
 #: orders/models.py:12
 msgid "Cancelled"
-msgstr ""
+msgstr "Cancelled"
 
 #: orders/models.py:18 users/models.py:10
 msgid "Client"
@@ -55,39 +55,39 @@ msgstr "Worker"
 
 #: orders/models.py:27
 msgid "Job Description"
-msgstr ""
+msgstr "Job Description"
 
 #: orders/models.py:33
 msgid "Status"
-msgstr ""
+msgstr "Status"
 
 #: orders/models.py:40
 msgid "Agreed Price"
-msgstr ""
+msgstr "Agreed Price"
 
 #: orders/models.py:44
 msgid "Created At"
-msgstr ""
+msgstr "Created At"
 
 #: orders/models.py:48
 msgid "Updated At"
-msgstr ""
+msgstr "Updated At"
 
 #: orders/models.py:52
 msgid "Service Order"
-msgstr ""
+msgstr "Service Order"
 
 #: orders/models.py:53
 msgid "Service Orders"
-msgstr ""
+msgstr "Service Orders"
 
 #: orders/serializers.py:42
 msgid "You cannot create an order for yourself."
-msgstr ""
+msgstr "You cannot create an order for yourself."
 
 #: orders/serializers.py:47
 msgid "This worker is not verified yet."
-msgstr ""
+msgstr "This worker is not verified yet."
 
 #: users/managers.py:7
 msgid "Email is required"
