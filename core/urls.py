@@ -17,6 +17,7 @@ urlpatterns = [
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/users/', include('users.urls')),
     path('api/workers/me/', ManageWorkerProfileView.as_view(), name='worker_profile'),
+    path('api/orders/', include('orders.urls')),
     path('', include(router.urls)),
     path('', include(admin_router.urls)),
 ]

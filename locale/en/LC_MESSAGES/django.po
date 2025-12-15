@@ -2,12 +2,12 @@
 # Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the PACKAGE package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
-#
+# 
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-10 19:15-0500\n"
+"POT-Creation-Date: 2025-12-15 15:36-0500\n"
 "PO-Revision-Date: 2025-12-10 18:15-0500\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: English <en@li.org>\n"
@@ -17,13 +17,77 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: core/settings.py:110
+#: core/settings.py:111
 msgid "Spanish"
 msgstr "Spanish"
 
-#: core/settings.py:111
+#: core/settings.py:112
 msgid "English"
 msgstr "English"
+
+#: orders/models.py:8
+msgid "Pending"
+msgstr ""
+
+#: orders/models.py:9
+msgid "Accepted"
+msgstr ""
+
+#: orders/models.py:10
+msgid "In Escrow"
+msgstr ""
+
+#: orders/models.py:11
+msgid "Completed"
+msgstr ""
+
+#: orders/models.py:12
+msgid "Cancelled"
+msgstr ""
+
+#: orders/models.py:18 users/models.py:10
+msgid "Client"
+msgstr "Client"
+
+#: orders/models.py:24 users/models.py:11
+msgid "Worker"
+msgstr "Worker"
+
+#: orders/models.py:27
+msgid "Job Description"
+msgstr ""
+
+#: orders/models.py:33
+msgid "Status"
+msgstr ""
+
+#: orders/models.py:40
+msgid "Agreed Price"
+msgstr ""
+
+#: orders/models.py:44
+msgid "Created At"
+msgstr ""
+
+#: orders/models.py:48
+msgid "Updated At"
+msgstr ""
+
+#: orders/models.py:52
+msgid "Service Order"
+msgstr ""
+
+#: orders/models.py:53
+msgid "Service Orders"
+msgstr ""
+
+#: orders/serializers.py:42
+msgid "You cannot create an order for yourself."
+msgstr ""
+
+#: orders/serializers.py:47
+msgid "This worker is not verified yet."
+msgstr ""
 
 #: users/managers.py:7
 msgid "Email is required"
@@ -36,14 +100,6 @@ msgstr "Superuser must have is_staff=True."
 #: users/models.py:9
 msgid "Administrator"
 msgstr "Administrator"
-
-#: users/models.py:10
-msgid "Client"
-msgstr "Client"
-
-#: users/models.py:11
-msgid "Worker"
-msgstr "Worker"
 
 #: users/models.py:12
 msgid "Company"
