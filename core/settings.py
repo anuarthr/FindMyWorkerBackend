@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'django.contrib.gis',
     'django_filters',
     'users',
+    'orders',
     'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt'
