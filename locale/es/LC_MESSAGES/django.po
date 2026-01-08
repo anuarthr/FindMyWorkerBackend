@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-12-15 17:51-0500\n"
+"POT-Creation-Date: 2026-01-07 19:59-0500\n"
 "PO-Revision-Date: 2025-12-10 18:15-0500\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: Spanish <es@li.org>\n"
@@ -88,6 +88,19 @@ msgstr "No puedes crear una orden para ti mismo."
 #: orders/serializers.py:47
 msgid "This worker is not verified yet."
 msgstr "Este trabajador aún no está verificado"
+
+#: orders/serializers.py:73
+#, python-brace-format
+msgid "Cannot transition from {current_status} to {value}."
+msgstr "No se puede pasar de {current_status} a {value}."
+
+#: orders/views.py:56
+msgid "Solo trabajadores pueden acceder a estas métricas."
+msgstr "Solo trabajadores pueden acceder a estas métricas."
+
+#: orders/views.py:64
+msgid "Perfil de trabajador no encontrado."
+msgstr "Perfil de trabajador no encontrado."
 
 #: users/managers.py:7
 msgid "Email is required"
