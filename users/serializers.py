@@ -29,11 +29,39 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             last_name=validated_data.get('last_name', '')
         )
         return user
-    
+
+class WorkerProfileUpdateSerializer(serializers.ModelSerializer):
+    latitude = serializers.FloatField(write_only=True, required=False, allow_null=True)
+    longitude = serializers.FloatField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = WorkerProfile
+        fields = [
+            'profession', 
+            'bio', 
+            'years_experience', 
+            'hourly_rate', 
+            'latitude', 
+            'longitude'
+        ]
+
+    def update(self, instance, validated_data):
+        lat = validated_data.pop('latitude', None)
+        lng = validated_data.pop('longitude', None)
+
+        if lat is not None and lng is not None:
+            instance.location = Point(float(lng), float(lat), srid=4326)
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        instance.save()
+        return instance
+
 class WorkerProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True) 
-    latitude = serializers.FloatField(write_only=True, required=False)
-    longitude = serializers.FloatField(write_only=True, required=False)
+    latitude = serializers.SerializerMethodField()
+    longitude = serializers.SerializerMethodField()
 
     class Meta:
         model = WorkerProfile
@@ -49,27 +77,14 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
             'latitude', 
             'longitude'
         ]
-        read_only_fields = ['is_verified', 'average_rating']
+        read_only_fields = ['id', 'user', 'is_verified', 'average_rating']
 
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        
-        if instance.location:
-            data['latitude'] = instance.location.y
-            data['longitude'] = instance.location.x
-        else:
-            data['latitude'] = None
-            data['longitude'] = None
-        return data
+    def get_latitude(self, obj):
+        return obj.location.y if obj.location else None
 
-    def update(self, instance, validated_data):
-        lat = validated_data.pop('latitude', None)
-        lng = validated_data.pop('longitude', None)
+    def get_longitude(self, obj):
+        return obj.location.x if obj.location else None
 
-        if lat is not None and lng is not None:
-            instance.location = Point(float(lng), float(lat), srid=4326)
-        return super().update(instance, validated_data)
-    
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     default_error_messages = {
         'no_active_account': _('No se encontró una cuenta activa con estas credenciales.')

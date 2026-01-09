@@ -1,11 +1,16 @@
 from django.shortcuts import render
 from rest_framework import generics, permissions
-from .serializers import UserSerializer, UserRegistrationSerializer
+from .serializers import (
+    UserSerializer, 
+    UserRegistrationSerializer,
+    WorkerProfileSerializer,
+    WorkerProfileUpdateSerializer,
+    CustomTokenObtainPairSerializer
+)
 from django.contrib.auth import get_user_model
 from rest_framework.response import Response
 from .models import WorkerProfile
-from .serializers import WorkerProfileSerializer, CustomTokenObtainPairSerializer
-from rest_framework import generics, permissions, viewsets
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework_simplejwt.views import TokenObtainPairView
 
@@ -24,17 +29,22 @@ class ManageUserView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 class ManageWorkerProfileView(generics.RetrieveUpdateAPIView):
-    serializer_class = WorkerProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
         profile, created = WorkerProfile.objects.get_or_create(user=self.request.user)
         return profile
     
+    def get_serializer_class(self):
+        if self.request.method == 'GET':
+            return WorkerProfileSerializer
+        return WorkerProfileUpdateSerializer
+
+
 class WorkerAdminViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = WorkerProfile.objects.all()
     serializer_class = WorkerProfileSerializer
-    permission_classes = [permissions.IsAdminUser] # Solo Staff/Superuser
+    permission_classes = [permissions.IsAdminUser]
 
     @action(detail=False, methods=['get'])
     def pending(self, request):
