@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
-from .models import ServiceOrder
+from .models import ServiceOrder, WorkHoursLog
 
 
 class ServiceOrderSerializer(serializers.ModelSerializer):
@@ -50,6 +50,7 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
         return value
 
 class ServiceOrderStatusSerializer(serializers.ModelSerializer):
+    # Serializer para actualizar el estado de la orden
     class Meta:
         model = ServiceOrder
         fields = ['status']
@@ -62,7 +63,7 @@ class ServiceOrderStatusSerializer(serializers.ModelSerializer):
             'PENDING': ['ACCEPTED', 'CANCELLED'],
             'ACCEPTED': ['IN_ESCROW', 'CANCELLED'],
             'IN_ESCROW': ['COMPLETED'],
-            'COMPLETED': [], 
+            'COMPLETED': [],
             'CANCELLED': [],
         }
 
@@ -73,21 +74,96 @@ class ServiceOrderStatusSerializer(serializers.ModelSerializer):
                 _(f"Cannot transition from {current_status} to {value}.")
             )
 
+        if value == 'COMPLETED':
+            if not instance.can_transition_to_completed():
+                raise serializers.ValidationError(
+                    _("No se puede completar la orden sin horas aprobadas. El precio acordado es $0.")
+                )
+
         return value
 
     def update(self, instance, validated_data):
         new_status = validated_data.get('status')
         
         if new_status == 'ACCEPTED':
-            #Crear ChatRoom para esta orden (HU6)
             pass
         
         if new_status == 'IN_ESCROW':
             pass
         
         if new_status == 'COMPLETED':
-            # TODO: Marcar chat como solo lectura
-            # TODO: Habilitar formulario de Review
-            pass
-
+            instance.update_agreed_price()
+        
         return super().update(instance, validated_data)
+
+class WorkHoursLogSerializer(serializers.ModelSerializer):
+    calculated_payment = serializers.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        read_only=True
+    )
+    status_display = serializers.CharField(read_only=True)
+    worker_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkHoursLog
+        fields = [
+            'id',
+            'service_order',
+            'date',
+            'hours',
+            'description',
+            'approved_by_client',
+            'calculated_payment',
+            'status_display',
+            'worker_name',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['approved_by_client', 'created_at', 'updated_at']
+
+    def get_worker_name(self, obj):
+        user = obj.service_order.worker.user
+        return f"{user.first_name} {user.last_name}".strip() or user.email
+
+    def validate(self, data):
+        # Solo el trabajador puede crear registros de horas
+        request = self.context.get('request')
+        service_order = data.get('service_order')
+        
+        if service_order and request:
+            if service_order.worker.user != request.user:
+                raise serializers.ValidationError(
+                    _("Solo el trabajador asignado puede registrar horas.")
+                )
+        
+        if service_order and service_order.status not in ['ACCEPTED', 'IN_ESCROW']:
+            raise serializers.ValidationError(
+                _("Solo se pueden registrar horas en órdenes aceptadas o en garantía.")
+            )
+        
+        if data.get('hours') and data['hours'] <= 0:
+            raise serializers.ValidationError({
+                'hours': _("Las horas deben ser mayor a 0.")
+            })
+        
+        from datetime import date
+        if data.get('date') and data['date'] > date.today():
+            raise serializers.ValidationError({
+                'date': _("No se pueden registrar horas futuras.")
+            })
+        
+        return data
+
+class WorkHoursLogUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkHoursLog
+        fields = ['hours', 'description']
+
+class WorkHoursApprovalSerializer(serializers.Serializer):
+    approved = serializers.BooleanField(required=True)
+    
+    def validate_approved(self, value):
+        if not isinstance(value, bool):
+            raise serializers.ValidationError(_("Debe ser true o false."))
+        return value

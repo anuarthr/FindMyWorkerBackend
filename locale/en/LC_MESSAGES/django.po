@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-01-07 19:59-0500\n"
+"POT-Creation-Date: 2026-01-09 18:13-0500\n"
 "PO-Revision-Date: 2025-12-10 18:15-0500\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: English <en@li.org>\n"
@@ -65,21 +65,67 @@ msgstr "Status"
 msgid "Agreed Price"
 msgstr "Agreed Price"
 
-#: orders/models.py:44
+#: orders/models.py:44 orders/models.py:103
 msgid "Created At"
 msgstr "Created At"
 
-#: orders/models.py:48
+#: orders/models.py:48 orders/models.py:107
 msgid "Updated At"
 msgstr "Updated At"
 
-#: orders/models.py:52
+#: orders/models.py:52 orders/models.py:81
 msgid "Service Order"
 msgstr "Service Order"
 
 #: orders/models.py:53
 msgid "Service Orders"
 msgstr "Service Orders"
+
+#: orders/models.py:84
+#, fuzzy
+#| msgid "Worker"
+msgid "Work Date"
+msgstr "Worker"
+
+#: orders/models.py:89
+msgid "Hours Worked"
+msgstr "Hours Worked"
+
+#: orders/models.py:90
+msgid "Ejemplo: 5.5 para 5 horas y 30 minutos"
+msgstr "Example: 5.5 for 5 hours and 30 minutes"
+
+#: orders/models.py:94
+#, fuzzy
+#| msgid "Job Description"
+msgid "Work Description"
+msgstr "Job Description"
+
+#: orders/models.py:95
+msgid "Descripción de las tareas realizadas"
+msgstr "Description of the tasks realized"
+
+#: orders/models.py:99
+msgid "Approved by Client"
+msgstr "Approved by Client"
+
+#: orders/models.py:111
+msgid "Work Hours Log"
+msgstr "Work Hours Log"
+
+#: orders/models.py:112
+msgid "Work Hours Logs"
+msgstr "Work Hours Log"
+
+#: orders/models.py:129
+msgid "Approved"
+msgstr "Approved"
+
+#: orders/models.py:129
+#, fuzzy
+#| msgid "Pending"
+msgid "Pending Approval"
+msgstr "Pending"
 
 #: orders/serializers.py:42
 msgid "You cannot create an order for yourself."
@@ -89,18 +135,67 @@ msgstr "You cannot create an order for yourself."
 msgid "This worker is not verified yet."
 msgstr "This worker is not verified yet."
 
-#: orders/serializers.py:73
+#: orders/serializers.py:74
 #, python-brace-format
 msgid "Cannot transition from {current_status} to {value}."
 msgstr "Cannot transition from {current_status} to {value}."
 
-#: orders/views.py:56
+#: orders/serializers.py:80
+msgid ""
+"No se puede completar la orden sin horas aprobadas. El precio acordado es $0."
+msgstr "The order cant be completed without approved hours. The acorded price is $0"
+
+#: orders/serializers.py:137
+#, fuzzy
+#| msgid "Solo trabajadores pueden acceder a estas métricas."
+msgid "Solo el trabajador asignado puede registrar horas."
+msgstr "Only workers can access to this metrics."
+
+#: orders/serializers.py:142
+msgid "Solo se pueden registrar horas en órdenes aceptadas o en garantía."
+msgstr "Only hours on accepted orders or under warranty can be registered."
+
+#: orders/serializers.py:147
+msgid "Las horas deben ser mayor a 0."
+msgstr "The hours must be higher than 0"
+
+#: orders/serializers.py:153
+msgid "No se pueden registrar horas futuras."
+msgstr "Future hours cant be registered"
+
+#: orders/serializers.py:168
+msgid "Debe ser true o false."
+msgstr "Must be true or false"
+
+#: orders/views.py:66
 msgid "Solo trabajadores pueden acceder a estas métricas."
 msgstr "Only workers can access to this metrics."
 
-#: orders/views.py:64
+#: orders/views.py:74
 msgid "Perfil de trabajador no encontrado."
 msgstr "Worker profile not found."
+
+#: orders/views.py:145
+#, fuzzy
+#| msgid "Solo trabajadores pueden acceder a estas métricas."
+msgid "Solo el trabajador puede registrar horas."
+msgstr "Only workers can access to this metrics."
+
+#: orders/views.py:161
+msgid "Solo el cliente puede aprobar horas."
+msgstr "Only the client can approve hours"
+
+#: orders/views.py:179
+msgid "Horas aprobadas exitosamente"
+msgstr "Hours approved succesfully"
+
+#: orders/views.py:179
+msgid "Aprobación revocada"
+msgstr "Aprobation revoked"
+
+#: orders/views.py:193
+msgid "No autorizado."
+msgstr "Not authorized"
 
 #: users/managers.py:7
 msgid "Email is required"
@@ -178,6 +273,6 @@ msgstr "Verified"
 msgid "Average Rating"
 msgstr "Average Rating"
 
-#: users/serializers.py:75
+#: users/serializers.py:90
 msgid "No se encontró una cuenta activa con estas credenciales."
 msgstr "No active account found with the given credentials."
