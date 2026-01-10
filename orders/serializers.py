@@ -2,7 +2,6 @@ from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 from .models import ServiceOrder, WorkHoursLog
 
-
 class ServiceOrderSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(
         source='get_status_display', 
@@ -13,6 +12,13 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
         read_only=True
     )
     worker_name = serializers.SerializerMethodField()
+    
+    worker_hourly_rate = serializers.DecimalField(
+        source='worker.hourly_rate',
+        max_digits=10,
+        decimal_places=2,
+        read_only=True
+    )
 
     class Meta:
         model = ServiceOrder
@@ -22,6 +28,7 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
             'client_email',
             'worker',
             'worker_name',
+            'worker_hourly_rate',
             'description',
             'status',
             'status_display',
@@ -32,7 +39,8 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
         read_only_fields = ['client', 'status', 'agreed_price', 'created_at', 'updated_at']
 
     def get_worker_name(self, obj):
-        return f"{obj.worker.user.first_name} {obj.worker.user.last_name}".strip() or obj.worker.user.email
+        full_name = f"{obj.worker.user.first_name} {obj.worker.user.last_name}".strip()
+        return full_name if full_name else obj.worker.user.email
 
     def validate_worker(self, value):
         user = self.context['request'].user
