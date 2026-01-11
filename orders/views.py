@@ -6,7 +6,9 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Sum, Count, Q, F
 from datetime import datetime
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
+from users.models import WorkerProfile
 from .models import ServiceOrder, WorkHoursLog
 from .serializers import (
     ServiceOrderSerializer,
@@ -66,7 +68,13 @@ class ServiceOrderStatusUpdateView(generics.UpdateAPIView):
 def worker_metrics(request):
     """
     GET /api/orders/workers/me/metrics/
-    Devuelve métricas agregadas del trabajador autenticado.
+    
+    Devuelve métricas completas del trabajador autenticado:
+    - active_jobs: Trabajos activos (ACCEPTED + IN_ESCROW)
+    - monthly_earnings: Ganancias del mes basadas en horas aprobadas
+    - total_earnings: Ganancias totales de órdenes completadas
+    - completed_jobs: Total de trabajos completados
+    - average_rating: Rating promedio del trabajador
     """
     if request.user.role != 'WORKER':
         return Response(
@@ -86,20 +94,13 @@ def worker_metrics(request):
     current_month = now.month
     current_year = now.year
     
-    metrics = ServiceOrder.objects.filter(
+    # 1. Métricas de órdenes (órdenes completadas)
+    order_metrics = ServiceOrder.objects.filter(
         worker=worker_profile
     ).aggregate(
         active_jobs=Count(
             'id', 
             filter=Q(status__in=['ACCEPTED', 'IN_ESCROW'])
-        ),
-        monthly_earnings=Sum(
-            'agreed_price',
-            filter=Q(
-                status='COMPLETED',
-                updated_at__month=current_month,
-                updated_at__year=current_year
-            )
         ),
         total_earnings=Sum(
             'agreed_price', 
@@ -111,11 +112,20 @@ def worker_metrics(request):
         )
     )
     
+    # 2. Ganancias del mes (basadas en horas aprobadas, no órdenes completadas)
+    month_logs = WorkHoursLog.objects.filter(
+        service_order__worker=worker_profile,
+        approved_by_client=True,
+        date__month=current_month,
+        date__year=current_year
+    )
+    monthly_earnings = sum(log.calculated_payment for log in month_logs)
+    
     return Response({
-        'active_jobs': metrics['active_jobs'] or 0,
-        'monthly_earnings': float(metrics['monthly_earnings'] or 0),
-        'total_earnings': float(metrics['total_earnings'] or 0),
-        'completed_jobs': metrics['completed_jobs'] or 0,
+        'active_jobs': order_metrics['active_jobs'] or 0,
+        'monthly_earnings': float(monthly_earnings),  # De horas aprobadas
+        'total_earnings': float(order_metrics['total_earnings'] or 0),
+        'completed_jobs': order_metrics['completed_jobs'] or 0,
         'average_rating': float(worker_profile.average_rating)
     }, status=status.HTTP_200_OK)
 
@@ -151,7 +161,9 @@ class WorkHoursLogViewSet(viewsets.ModelViewSet):
         if order.worker.user != self.request.user:
             raise PermissionDenied(_("Solo el trabajador puede registrar horas."))
         
+        # Guardar el registro de horas
         serializer.save(service_order=order)
+        # El signal post_save manejará el cambio de estado automáticamente
 
     @action(detail=True, methods=['post'])
     def approve(self, request, order_pk=None, pk=None):
