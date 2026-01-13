@@ -111,7 +111,6 @@ class WorkHoursLog(models.Model):
         verbose_name = _('Work Hours Log')
         verbose_name_plural = _('Work Hours Logs')
         ordering = ['-date', '-created_at']
-        # Evitar duplicados por fecha
         unique_together = [['service_order', 'date']]
 
     def __str__(self):

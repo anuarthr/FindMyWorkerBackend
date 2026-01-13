@@ -48,14 +48,12 @@ class WorkerAdminViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['get'])
     def pending(self, request):
-        """Lista trabajadores NO verificados"""
         pending_workers = WorkerProfile.objects.filter(is_verified=False)
         serializer = self.get_serializer(pending_workers, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        """Aprueba un trabajador específico"""
         worker = self.get_object()
         worker.is_verified = True
         worker.save()

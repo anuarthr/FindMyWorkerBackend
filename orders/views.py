@@ -94,7 +94,6 @@ def worker_metrics(request):
     current_month = now.month
     current_year = now.year
     
-    # 1. Métricas de órdenes (órdenes completadas)
     order_metrics = ServiceOrder.objects.filter(
         worker=worker_profile
     ).aggregate(
@@ -112,7 +111,6 @@ def worker_metrics(request):
         )
     )
     
-    # 2. Ganancias del mes (basadas en horas aprobadas, no órdenes completadas)
     month_logs = WorkHoursLog.objects.filter(
         service_order__worker=worker_profile,
         approved_by_client=True,
@@ -123,7 +121,7 @@ def worker_metrics(request):
     
     return Response({
         'active_jobs': order_metrics['active_jobs'] or 0,
-        'monthly_earnings': float(monthly_earnings),  # De horas aprobadas
+        'monthly_earnings': float(monthly_earnings),
         'total_earnings': float(order_metrics['total_earnings'] or 0),
         'completed_jobs': order_metrics['completed_jobs'] or 0,
         'average_rating': float(worker_profile.average_rating)
@@ -140,30 +138,24 @@ class WorkHoursLogViewSet(viewsets.ModelViewSet):
     serializer_class = WorkHoursLogSerializer
 
     def get_queryset(self):
-        """Filtrar por orden específica"""
         order_id = self.kwargs.get('order_pk')
         return WorkHoursLog.objects.filter(
             service_order_id=order_id
         ).select_related('service_order', 'service_order__worker', 'service_order__worker__user')
 
     def get_serializer_class(self):
-        """Usar serializer específico según la acción"""
         if self.action in ['update', 'partial_update']:
             return WorkHoursLogUpdateSerializer
         return WorkHoursLogSerializer
 
     def perform_create(self, serializer):
-        """Asignar la orden automáticamente"""
         order_id = self.kwargs.get('order_pk')
         order = get_object_or_404(ServiceOrder, pk=order_id)
         
-        # Verificar que el usuario es el trabajador
         if order.worker.user != self.request.user:
             raise PermissionDenied(_("Solo el trabajador puede registrar horas."))
         
-        # Guardar el registro de horas
         serializer.save(service_order=order)
-        # El signal post_save manejará el cambio de estado automáticamente
 
     @action(detail=True, methods=['post'])
     def approve(self, request, order_pk=None, pk=None):

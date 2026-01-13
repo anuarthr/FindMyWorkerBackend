@@ -58,7 +58,6 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
         return value
 
 class ServiceOrderStatusSerializer(serializers.ModelSerializer):
-    # Serializer para actualizar el estado de la orden
     class Meta:
         model = ServiceOrder
         fields = ['status']
@@ -135,7 +134,6 @@ class WorkHoursLogSerializer(serializers.ModelSerializer):
         return f"{user.first_name} {user.last_name}".strip() or user.email
 
     def validate(self, data):
-        # Solo el trabajador puede crear registros de horas
         request = self.context.get('request')
         service_order = data.get('service_order')
         
