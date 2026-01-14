@@ -6,8 +6,12 @@ from .views import (
     ServiceOrderStatusUpdateView,
     worker_metrics,
     WorkHoursLogViewSet,
-    order_price_summary
+    order_price_summary,
+    order_messages
 )
+
+router = routers.SimpleRouter()
+router.register(r'(?P<order_pk>\d+)/work-hours', WorkHoursLogViewSet, basename='order-workhours')
 
 work_hours_list = WorkHoursLogViewSet.as_view({
     'get': 'list',
@@ -34,4 +38,5 @@ urlpatterns = [
     path('<int:order_pk>/work-hours/<int:pk>/', work_hours_detail, name='order-work-hours-detail'),
     path('<int:order_pk>/work-hours/<int:pk>/approve/', work_hours_approve, name='order-work-hours-approve'),
     path('<int:pk>/price-summary/', order_price_summary, name='order-price-summary'),
-]
+    path('<int:pk>/messages/', order_messages, name='order-messages'),
+] + router.urls
