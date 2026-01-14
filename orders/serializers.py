@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
-from .models import ServiceOrder, WorkHoursLog
+from .models import ServiceOrder, WorkHoursLog, Message
 
 class ServiceOrderSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(
@@ -173,3 +173,40 @@ class WorkHoursApprovalSerializer(serializers.Serializer):
         if not isinstance(value, bool):
             raise serializers.ValidationError(_("Debe ser true o false."))
         return value
+    
+class MessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.SerializerMethodField()
+    sender_email = serializers.EmailField(source='sender.email', read_only=True)
+    sender_role = serializers.CharField(source='sender.role', read_only=True)
+    
+    class Meta:
+        model = Message
+        fields = [
+            'id',
+            'service_order',
+            'sender',
+            'sender_name',
+            'sender_email',
+            'sender_role',
+            'content',
+            'is_read',
+            'timestamp'
+        ]
+        read_only_fields = ['sender', 'timestamp', 'is_read']
+    
+    def get_sender_name(self, obj):
+        full_name = f"{obj.sender.first_name} {obj.sender.last_name}".strip()
+        return full_name if full_name else obj.sender.email
+    
+    def validate_content(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError(
+                _("El mensaje no puede estar vacío.")
+            )
+        
+        if len(value) > 5000:
+            raise serializers.ValidationError(
+                _("El mensaje no puede exceder 5000 caracteres.")
+            )
+        
+        return value.strip()

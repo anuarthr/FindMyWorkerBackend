@@ -61,3 +61,7 @@ urllib3 @ file:///croot/urllib3_1737133630106/work
 wheel==0.45.1
 zstandard @ file:///croot/zstandard_1731356346222/work
 drf-nested-routers==0.93.5
+channels==4.0.0
+channels-redis==4.1.0
+redis==5.0.1
+daphne==4.0.0

@@ -9,13 +9,14 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 from users.models import WorkerProfile
-from .models import ServiceOrder, WorkHoursLog
+from .models import ServiceOrder, WorkHoursLog, Message
 from .serializers import (
     ServiceOrderSerializer,
     ServiceOrderStatusSerializer,
     WorkHoursLogSerializer,
     WorkHoursLogUpdateSerializer,
-    WorkHoursApprovalSerializer
+    WorkHoursApprovalSerializer,
+    MessageSerializer
 )
 from .permissions import IsOrderParticipant, CanChangeOrderStatus
 
@@ -231,3 +232,33 @@ def order_price_summary(request, pk):
         'agreed_price': float(order.agreed_price) if order.agreed_price else 0,
         'can_complete_order': order.can_transition_to_completed()
     })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsOrderParticipant])
+def order_messages(request, pk):
+    """
+    GET /api/orders/{id}/messages/
+    
+    Devuelve el historial de mensajes de una orden específica.
+    Solo accesible por el cliente o trabajador de la orden.
+    Retorna últimos 50 mensajes ordenados por timestamp ascendente.
+    """
+    order = get_object_or_404(ServiceOrder, pk=pk)
+    
+    if order.client != request.user and order.worker.user != request.user:
+        return Response(
+            {'detail': _('No tienes permiso para acceder a este chat.')},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    messages = Message.objects.filter(
+        service_order=order
+    ).select_related('sender').order_by('timestamp')[:50]
+    
+    serializer = MessageSerializer(messages, many=True)
+    
+    return Response({
+        'order_id': order.id,
+        'total_messages': messages.count(),
+        'messages': serializer.data
+    }, status=status.HTTP_200_OK)

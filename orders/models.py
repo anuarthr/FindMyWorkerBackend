@@ -127,3 +127,41 @@ class WorkHoursLog(models.Model):
     def status_display(self):
         """Estado visual del registro"""
         return _('Approved') if self.approved_by_client else _('Pending Approval')
+    
+class Message(models.Model):
+    service_order = models.ForeignKey(
+        ServiceOrder,
+        on_delete=models.CASCADE,
+        related_name='messages',
+        verbose_name=_('Service Order')
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='sent_messages',
+        verbose_name=_('Sender')
+    )
+    content = models.TextField(
+        verbose_name=_('Message Content'),
+        help_text=_('Contenido del mensaje de texto')
+    )
+    is_read = models.BooleanField(
+        default=False,
+        verbose_name=_('Read')
+    )
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name=_('Timestamp')
+    )
+
+    class Meta:
+        verbose_name = _('Message')
+        verbose_name_plural = _('Messages')
+        ordering = ['timestamp']
+        indexes = [
+            models.Index(fields=['service_order', 'timestamp']),
+            models.Index(fields=['sender', 'timestamp']),
+        ]
+
+    def __str__(self):
+        return f"Message #{self.pk} - Order #{self.service_order.id} - {self.sender.email}"
