@@ -20,6 +20,10 @@ class ChatConsumer(WebsocketConsumer):
     """
     
     def connect(self):
+        """
+        Maneja la conexión inicial del WebSocket.
+        Valida autenticación y permisos antes de aceptar.
+        """
         self.user = self.scope['user']
         self.order_id = self.scope['url_route']['kwargs']['order_id']
         self.room_group_name = f'chat_{self.order_id}'
@@ -53,7 +57,6 @@ class ChatConsumer(WebsocketConsumer):
         )
         
         self.accept()
-        
         self.send(text_data=json.dumps({
             'type': 'connection_established',
             'message': f'Conectado al chat de la orden #{self.order_id}'

@@ -14,8 +14,15 @@ def get_user_from_token(token_key):
     try:
         access_token = AccessToken(token_key)
         user_id = access_token['user_id']
-        return User.objects.get(id=user_id)
-    except (InvalidToken, TokenError, User.DoesNotExist):
+        user = User.objects.get(id=user_id)
+        return user
+    except InvalidToken as e:
+        return AnonymousUser()
+    except TokenError as e:
+        return AnonymousUser()
+    except User.DoesNotExist:
+        return AnonymousUser()
+    except Exception as e:
         return AnonymousUser()
 
 class JWTAuthMiddleware(BaseMiddleware):
