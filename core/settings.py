@@ -2,7 +2,6 @@ from decouple import config
 from pathlib import Path
 from django.utils.translation import gettext_lazy as _
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-3#&tpg%)le)2!0ss#roaj68hkoo*xljz$4fn0oug^wovvoq&dv'
 
@@ -102,7 +101,12 @@ LOCALE_PATHS = [
     BASE_DIR / 'locale',
 ]
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
