@@ -1,0 +1,3 @@
+# Logs de la aplicación
+# Este directorio contiene los logs generados por Django
+*.log
