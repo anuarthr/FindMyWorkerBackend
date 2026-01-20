@@ -6,3 +6,19 @@ __pycache__/
 db.sqlite3
 media/
 staticfiles/
+
+# Logs (generados por Django logging)
+logs/*.log
+logs/*.log.*
+
+# Python cache
+*.py[cod]
+*$py.class
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db

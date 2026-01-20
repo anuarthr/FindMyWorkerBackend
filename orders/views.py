@@ -1,9 +1,11 @@
+import logging
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
-from django.db.models import Sum, Count, Q, F
+from django.db.models import Sum, Count, Q, F, Prefetch
 from datetime import datetime
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
@@ -20,47 +22,118 @@ from .serializers import (
 )
 from .permissions import IsOrderParticipant, CanChangeOrderStatus
 
+# Configuración del logger
+logger = logging.getLogger(__name__)
+
+# Configuración del logger
+logger = logging.getLogger(__name__)
+
+
+class StandardResultsSetPagination(PageNumberPagination):
+    """
+    Paginación estándar para listados.
+    - page_size: 20 items por página por defecto
+    - max_page_size: Máximo 100 items por página
+    - page_size_query_param: Permite al cliente especificar tamaño con ?page_size=N
+    """
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
 class ServiceOrderCreateView(generics.CreateAPIView):
+    """
+    POST /api/orders/
+    Crea una nueva orden de servicio.
+    Solo usuarios autenticados pueden crear órdenes.
+    """
     queryset = ServiceOrder.objects.all()
     serializer_class = ServiceOrderSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        serializer.save(client=self.request.user)
+        """Asigna automáticamente el cliente actual a la orden."""
+        order = serializer.save(client=self.request.user)
+        logger.info(
+            f"Orden #{order.id} creada por {self.request.user.email} "
+            f"para trabajador {order.worker.user.email}"
+        )
 
 class ServiceOrderListView(generics.ListAPIView):
+    """
+    GET /api/orders/?status=PENDING
+    Lista las órdenes del usuario autenticado (como cliente o trabajador).
+    
+    Query params:
+    - status: Filtrar por estado (PENDING, ACCEPTED, IN_ESCROW, COMPLETED, CANCELLED)
+    - page: Número de página
+    - page_size: Cantidad de items por página (max 100)
+    """
     serializer_class = ServiceOrderSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
+        """Obtiene órdenes del usuario con optimización de queries."""
         user = self.request.user
+        
+        # Optimizar con select_related y prefetch_related
         queryset = ServiceOrder.objects.filter(
             Q(client=user) | Q(worker__user=user)
-        ).select_related('client', 'worker', 'worker__user')
+        ).select_related(
+            'client', 'worker', 'worker__user'
+        ).prefetch_related(
+            Prefetch(
+                'work_hours',
+                queryset=WorkHoursLog.objects.filter(approved_by_client=True)
+            )
+        )
 
+        # Filtrar por estado si se proporciona
         status_filter = self.request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter.upper())
+            logger.debug(f"Usuario {user.email} filtró órdenes por estado: {status_filter}")
 
-        return queryset
+        return queryset.order_by('-created_at')
 
 class ServiceOrderDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/orders/{id}/
+    Obtiene los detalles de una orden específica.
+    Solo accesible por el cliente o trabajador de la orden.
+    """
     queryset = ServiceOrder.objects.select_related('client', 'worker', 'worker__user')
     serializer_class = ServiceOrderSerializer
     permission_classes = [permissions.IsAuthenticated, IsOrderParticipant]
 
 class ServiceOrderStatusUpdateView(generics.UpdateAPIView):
+    """
+    PATCH /api/orders/{id}/status/
+    Actualiza el estado de una orden.
+    Las transiciones de estado están controladas por permisos.
+    """
     queryset = ServiceOrder.objects.select_related('client', 'worker', 'worker__user')
     serializer_class = ServiceOrderStatusSerializer
     permission_classes = [permissions.IsAuthenticated, IsOrderParticipant, CanChangeOrderStatus]
 
     def update(self, request, *args, **kwargs):
+        """Actualiza el estado y retorna la orden completa."""
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        old_status = instance.status
+        
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
+        
+        new_status = instance.status
+        logger.info(
+            f"Orden #{instance.id} actualizada de {old_status} a {new_status} "
+            f"por {request.user.email}"
+        )
 
+        # Retornar serializador completo con todos los campos
         full_serializer = ServiceOrderSerializer(instance)
         return Response(full_serializer.data)
 
@@ -76,16 +149,25 @@ def worker_metrics(request):
     - total_earnings: Ganancias totales de órdenes completadas
     - completed_jobs: Total de trabajos completados
     - average_rating: Rating promedio del trabajador
+    
+    Solo accesible por usuarios con rol WORKER.
     """
+    # Validar que el usuario sea un trabajador
     if request.user.role != 'WORKER':
+        logger.warning(
+            f"Usuario {request.user.email} con rol {request.user.role} "
+            f"intentó acceder a métricas de trabajador"
+        )
         return Response(
             {'detail': _('Solo trabajadores pueden acceder a estas métricas.')},
             status=status.HTTP_403_FORBIDDEN
         )
     
+    # Obtener perfil de trabajador
     try:
-        worker_profile = WorkerProfile.objects.get(user=request.user)
+        worker_profile = WorkerProfile.objects.select_related('user').get(user=request.user)
     except WorkerProfile.DoesNotExist:
+        logger.error(f"Perfil de trabajador no encontrado para {request.user.email}")
         return Response(
             {'detail': _('Perfil de trabajador no encontrado.')},
             status=status.HTTP_404_NOT_FOUND
@@ -95,6 +177,7 @@ def worker_metrics(request):
     current_month = now.month
     current_year = now.year
     
+    # Obtener métricas de órdenes con una sola query optimizada
     order_metrics = ServiceOrder.objects.filter(
         worker=worker_profile
     ).aggregate(
@@ -112,76 +195,120 @@ def worker_metrics(request):
         )
     )
     
+    # Calcular ganancias del mes actual
     month_logs = WorkHoursLog.objects.filter(
         service_order__worker=worker_profile,
         approved_by_client=True,
         date__month=current_month,
         date__year=current_year
-    )
+    ).select_related('service_order', 'service_order__worker')
+    
     monthly_earnings = sum(log.calculated_payment for log in month_logs)
     
-    return Response({
+    metrics_data = {
         'active_jobs': order_metrics['active_jobs'] or 0,
         'monthly_earnings': float(monthly_earnings),
         'total_earnings': float(order_metrics['total_earnings'] or 0),
         'completed_jobs': order_metrics['completed_jobs'] or 0,
         'average_rating': float(worker_profile.average_rating)
-    }, status=status.HTTP_200_OK)
+    }
+    
+    logger.info(f"Métricas generadas para trabajador {request.user.email}")
+    return Response(metrics_data, status=status.HTTP_200_OK)
 
 class WorkHoursLogViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestionar registros de horas trabajadas.
+    
+    Endpoints:
     - list/create: GET/POST /api/orders/{order_id}/work-hours/
     - retrieve/update/destroy: GET/PATCH/DELETE /api/orders/{order_id}/work-hours/{id}/
     - approve: POST /api/orders/{order_id}/work-hours/{id}/approve/
+    
+    Solo participantes de la orden pueden acceder.
+    Solo el trabajador puede crear/editar horas.
+    Solo el cliente puede aprobar horas.
     """
     permission_classes = [permissions.IsAuthenticated, IsOrderParticipant]
     serializer_class = WorkHoursLogSerializer
 
     def get_queryset(self):
+        """Obtiene registros de horas para una orden específica."""
         order_id = self.kwargs.get('order_pk')
         return WorkHoursLog.objects.filter(
             service_order_id=order_id
-        ).select_related('service_order', 'service_order__worker', 'service_order__worker__user')
+        ).select_related(
+            'service_order', 'service_order__worker', 'service_order__worker__user'
+        ).order_by('-date', '-created_at')
 
     def get_serializer_class(self):
+        """Usa serializador apropiado según la acción."""
         if self.action in ['update', 'partial_update']:
             return WorkHoursLogUpdateSerializer
         return WorkHoursLogSerializer
 
     def perform_create(self, serializer):
+        """Crea un nuevo registro de horas. Solo el trabajador puede hacerlo."""
         order_id = self.kwargs.get('order_pk')
         order = get_object_or_404(ServiceOrder, pk=order_id)
         
+        # Validar que solo el trabajador pueda registrar horas
         if order.worker.user != self.request.user:
+            logger.warning(
+                f"Usuario {self.request.user.email} intentó registrar horas "
+                f"en orden {order_id} sin ser el trabajador"
+            )
             raise PermissionDenied(_("Solo el trabajador puede registrar horas."))
         
-        serializer.save(service_order=order)
+        work_log = serializer.save(service_order=order)
+        logger.info(
+            f"Registro de horas #{work_log.id} creado para orden {order_id} "
+            f"por {self.request.user.email}: {work_log.hours}h el {work_log.date}"
+        )
 
     @action(detail=True, methods=['post'])
     def approve(self, request, order_pk=None, pk=None):
         """
         POST /api/orders/{order_id}/work-hours/{id}/approve/
+        
         El cliente aprueba o rechaza el registro de horas.
+        
         Body: {"approved": true}
+        
+        Cuando se aprueba, actualiza automáticamente el precio acordado de la orden.
         """
         work_log = self.get_object()
         order = work_log.service_order
         
+        # Validar que solo el cliente pueda aprobar
         if order.client != request.user:
+            logger.warning(
+                f"Usuario {request.user.email} intentó aprobar horas "
+                f"en orden {order_pk} sin ser el cliente"
+            )
             return Response(
                 {'detail': _('Solo el cliente puede aprobar horas.')},
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        # Validar datos de entrada
         serializer = WorkHoursApprovalSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         approved = serializer.validated_data['approved']
-        work_log.approved_by_client = approved
-        work_log.save()
         
+        # Actualizar estado de aprobación
+        work_log.approved_by_client = approved
+        work_log.save(update_fields=['approved_by_client', 'updated_at'])
+        
+        # Si se aprobó, actualizar precio de la orden
         if approved:
             order.update_agreed_price()
+            logger.info(
+                f"Horas #{work_log.id} aprobadas por {request.user.email}. "
+                f"Precio orden actualizado a ${order.agreed_price}"
+            )
+        else:
+            logger.info(f"Aprobación de horas #{work_log.id} revocada por {request.user.email}")
         
         return Response({
             'id': work_log.id,
@@ -196,18 +323,35 @@ class WorkHoursLogViewSet(viewsets.ModelViewSet):
 def order_price_summary(request, pk):
     """
     GET /api/orders/{id}/price-summary/
-    Devuelve un resumen del precio calculado de la orden.
-    """
-    order = get_object_or_404(ServiceOrder, pk=pk)
     
+    Devuelve un resumen detallado del precio calculado de la orden:
+    - Horas totales (aprobadas y pendientes)
+    - Pagos calculados (aprobados y pendientes)
+    - Precio acordado actual
+    - Indicador si la orden puede completarse
+    
+    Solo accesible por el cliente o trabajador de la orden.
+    """
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related('worker'),
+        pk=pk
+    )
+    
+    # Validar permisos
     if order.client != request.user and order.worker.user != request.user:
+        logger.warning(
+            f"Usuario {request.user.email} intentó acceder a resumen de precio "
+            f"de orden {pk} sin permisos"
+        )
         return Response(
             {'detail': _('No autorizado.')},
             status=status.HTTP_403_FORBIDDEN
         )
     
+    # Obtener registros de horas optimizado
     work_hours = order.work_hours.all()
     
+    # Calcular totales
     total_hours_approved = sum(
         log.hours for log in work_hours if log.approved_by_client
     )
@@ -222,7 +366,7 @@ def order_price_summary(request, pk):
         log.calculated_payment for log in work_hours if not log.approved_by_client
     )
     
-    return Response({
+    summary = {
         'order_id': order.id,
         'worker_hourly_rate': float(order.worker.hourly_rate or 0),
         'total_hours_approved': float(total_hours_approved),
@@ -231,34 +375,63 @@ def order_price_summary(request, pk):
         'payment_pending': float(payment_pending),
         'agreed_price': float(order.agreed_price) if order.agreed_price else 0,
         'can_complete_order': order.can_transition_to_completed()
-    })
+    }
+    
+    logger.debug(f"Resumen de precio generado para orden {pk}")
+    return Response(summary)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsOrderParticipant])
 def order_messages(request, pk):
     """
-    GET /api/orders/{id}/messages/
+    GET /api/orders/{id}/messages/?limit=50
     
     Devuelve el historial de mensajes de una orden específica.
     Solo accesible por el cliente o trabajador de la orden.
-    Retorna últimos 50 mensajes ordenados por timestamp ascendente.
-    """
-    order = get_object_or_404(ServiceOrder, pk=pk)
     
+    Query params:
+    - limit: Número máximo de mensajes a retornar (default: 50, max: 200)
+    
+    Retorna mensajes ordenados por timestamp ascendente (más antiguos primero).
+    """
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related('client', 'worker', 'worker__user'),
+        pk=pk
+    )
+    
+    # Validar permisos
     if order.client != request.user and order.worker.user != request.user:
+        logger.warning(
+            f"Usuario {request.user.email} intentó acceder a mensajes "
+            f"de orden {pk} sin permisos"
+        )
         return Response(
             {'detail': _('No tienes permiso para acceder a este chat.')},
             status=status.HTTP_403_FORBIDDEN
         )
     
+    # Obtener límite de mensajes desde query params
+    try:
+        limit = int(request.query_params.get('limit', 50))
+        limit = min(max(limit, 1), 200)  # Entre 1 y 200
+    except (ValueError, TypeError):
+        limit = 50
+    
+    # Obtener mensajes optimizado con select_related
     messages = Message.objects.filter(
         service_order=order
-    ).select_related('sender').order_by('timestamp')[:50]
+    ).select_related('sender').order_by('timestamp')[:limit]
     
     serializer = MessageSerializer(messages, many=True)
+    
+    logger.debug(
+        f"Recuperados {len(messages)} mensajes para orden {pk} "
+        f"por {request.user.email}"
+    )
     
     return Response({
         'order_id': order.id,
         'total_messages': messages.count(),
+        'limit_applied': limit,
         'messages': serializer.data
     }, status=status.HTTP_200_OK)
