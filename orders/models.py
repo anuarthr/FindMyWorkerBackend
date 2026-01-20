@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import ValidationError
+from decimal import Decimal
 
 
 class ServiceOrder(models.Model):
@@ -52,23 +54,86 @@ class ServiceOrder(models.Model):
         verbose_name = _('Service Order')
         verbose_name_plural = _('Service Orders')
         ordering = ['-created_at']
+        # Índices para optimizar queries frecuentes
+        indexes = [
+            models.Index(fields=['client', 'status'], name='order_client_status_idx'),
+            models.Index(fields=['worker', 'status'], name='order_worker_status_idx'),
+            models.Index(fields=['status', 'created_at'], name='order_status_created_idx'),
+        ]
 
     def calculate_total_price(self):
+        """
+        Calcula el precio total de la orden basado en horas aprobadas.
+        
+        Returns:
+            Decimal: Total a pagar calculado (horas * tarifa horaria)
+        """
         from django.db.models import Sum, F
+        
+        # Validar que el worker tenga tarifa horaria configurada
+        if not self.worker.hourly_rate or self.worker.hourly_rate <= 0:
+            return Decimal('0.00')
+        
         total = self.work_hours.filter(
             approved_by_client=True
         ).aggregate(
             total_payment=Sum(F('hours') * self.worker.hourly_rate)
         )['total_payment']
         
-        return total or 0
+        return Decimal(str(total)) if total else Decimal('0.00')
 
     def update_agreed_price(self):
+        """
+        Actualiza el precio acordado basándose en las horas aprobadas.
+        Solo actualiza los campos necesarios para evitar triggers innecesarios.
+        """
         self.agreed_price = self.calculate_total_price()
         self.save(update_fields=['agreed_price', 'updated_at'])
 
     def can_transition_to_completed(self):
+        """
+        Verifica si la orden puede transicionar a estado COMPLETED.
+        Requiere que haya un precio acordado mayor a cero.
+        
+        Returns:
+            bool: True si puede completarse, False en caso contrario
+        """
         return self.agreed_price and self.agreed_price > 0
+    
+    def get_total_hours(self):
+        """
+        Obtiene el total de horas registradas (aprobadas y pendientes).
+        
+        Returns:
+            dict: Diccionario con 'approved' y 'pending' horas
+        """
+        from django.db.models import Sum
+        approved = self.work_hours.filter(approved_by_client=True).aggregate(
+            total=Sum('hours'))['total'] or Decimal('0.00')
+        pending = self.work_hours.filter(approved_by_client=False).aggregate(
+            total=Sum('hours'))['total'] or Decimal('0.00')
+        
+        return {
+            'approved': approved,
+            'pending': pending,
+            'total': approved + pending
+        }
+    
+    def clean(self):
+        """
+        Validaciones a nivel de modelo.
+        """
+        super().clean()
+        
+        # Validar que el cliente no sea el mismo que el trabajador
+        if self.worker and self.client == self.worker.user:
+            raise ValidationError(_("El cliente no puede crear una orden consigo mismo."))
+        
+        # Validar transiciones de estado
+        if self.pk:  # Solo para instancias existentes
+            old_instance = ServiceOrder.objects.filter(pk=self.pk).first()
+            if old_instance and old_instance.status == 'COMPLETED' and self.status != 'COMPLETED':
+                raise ValidationError(_("No se puede cambiar el estado de una orden completada."))
 
     def __str__(self):
         return f"Order #{self.pk} - {self.client.email} → {self.worker.user.email} ({self.status})"
@@ -112,21 +177,57 @@ class WorkHoursLog(models.Model):
         verbose_name_plural = _('Work Hours Logs')
         ordering = ['-date', '-created_at']
         unique_together = [['service_order', 'date']]
+        # Índice para optimizar consultas de aprobación
+        indexes = [
+            models.Index(fields=['service_order', 'approved_by_client'], name='workhours_order_approved_idx'),
+            models.Index(fields=['date'], name='workhours_date_idx'),
+        ]
 
     def __str__(self):
         return f"{self.service_order.id} - {self.date} - {self.hours}h"
+    
+    def save(self, *args, **kwargs):
+        """
+        Override del método save para ejecutar validaciones.
+        """
+        self.full_clean()  # Ejecuta las validaciones del método clean()
+        super().save(*args, **kwargs)
 
     @property
     def calculated_payment(self):
-        """Calcula el pago basado en hourly_rate del trabajador"""
-        if self.service_order.worker.hourly_rate:
-            return float(self.hours) * float(self.service_order.worker.hourly_rate)
-        return 0
+        """
+        Calcula el pago basado en hourly_rate del trabajador.
+        
+        Returns:
+            Decimal: Monto calculado (horas * tarifa horaria)
+        """
+        if self.service_order.worker.hourly_rate and self.service_order.worker.hourly_rate > 0:
+            return Decimal(str(self.hours)) * Decimal(str(self.service_order.worker.hourly_rate))
+        return Decimal('0.00')
 
     @property
     def status_display(self):
         """Estado visual del registro"""
         return _('Approved') if self.approved_by_client else _('Pending Approval')
+    
+    def clean(self):
+        """
+        Validaciones a nivel de modelo para WorkHoursLog.
+        """
+        super().clean()
+        
+        # Validar que las horas sean positivas
+        if self.hours and self.hours <= 0:
+            raise ValidationError({'hours': _("Las horas deben ser mayores a 0.")})
+        
+        # Validar que no se registren horas futuras
+        from datetime import date
+        if self.date and self.date > date.today():
+            raise ValidationError({'date': _("No se pueden registrar horas futuras.")})        
+        
+        # Validar que la orden esté en estado correcto
+        if self.service_order and self.service_order.status not in ['ACCEPTED', 'IN_ESCROW']:
+            raise ValidationError(_("Solo se pueden registrar horas en órdenes aceptadas o en garantía."))
     
 class Message(models.Model):
     service_order = models.ForeignKey(
@@ -165,3 +266,34 @@ class Message(models.Model):
 
     def __str__(self):
         return f"Message #{self.pk} - Order #{self.service_order.id} - {self.sender.email}"
+    
+    def mark_as_read(self):
+        """
+        Marca el mensaje como leído.
+        """
+        if not self.is_read:
+            self.is_read = True
+            self.save(update_fields=['is_read'])
+    
+    def clean(self):
+        """
+        Validaciones a nivel de modelo para Message.
+        """
+        super().clean()
+        
+        # Validar que el contenido no esté vacío
+        if not self.content or not self.content.strip():
+            raise ValidationError({'content': _("El mensaje no puede estar vacío.")})
+        
+        # Validar longitud máxima del mensaje
+        if len(self.content) > 5000:
+            raise ValidationError({'content': _("El mensaje no puede exceder 5000 caracteres.")})
+        
+        # Validar que el remitente sea parte de la orden
+        if self.service_order and self.sender:
+            is_participant = (
+                self.sender == self.service_order.client or 
+                self.sender == self.service_order.worker.user
+            )
+            if not is_participant:
+                raise ValidationError(_("Solo los participantes de la orden pueden enviar mensajes."))
