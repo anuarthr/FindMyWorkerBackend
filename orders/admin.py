@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ServiceOrder, WorkHoursLog
+from .models import ServiceOrder, WorkHoursLog, Review
 
 class WorkHoursLogInline(admin.TabularInline):
     model = WorkHoursLog
@@ -185,3 +185,84 @@ class WorkHoursLogAdmin(admin.ModelAdmin):
             f"Se revocó la aprobación de {count} registros. Se actualizaron {len(orders_to_update)} órdenes."
         )
     revoke_approval.short_description = "❌ Revocar aprobación"
+
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    """
+    Administrador para Reviews.
+    """
+    list_display = [
+        'id',
+        'service_order',
+        'reviewer_display',
+        'worker_display',
+        'rating_display',
+        'comment_preview',
+        'created_at',
+        'can_edit'
+    ]
+    list_filter = ['rating', 'created_at']
+    search_fields = [
+        'service_order__id',
+        'service_order__client__email',
+        'service_order__worker__user__email',
+        'comment'
+    ]
+    readonly_fields = [
+        'service_order',
+        'reviewer_display',
+        'worker_display',
+        'created_at',
+        'can_edit'
+    ]
+    ordering = ['-created_at']
+    
+    fieldsets = (
+        ('Orden', {
+            'fields': ('service_order', 'reviewer_display', 'worker_display')
+        }),
+        ('Evaluación', {
+            'fields': ('rating', 'comment')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'can_edit'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def reviewer_display(self, obj):
+        """Muestra el reviewer (cliente)"""
+        return obj.reviewer.email if obj.reviewer else 'N/A'
+    reviewer_display.short_description = 'Cliente (Reviewer)'
+    
+    def worker_display(self, obj):
+        """Muestra el trabajador evaluado"""
+        return obj.worker.user.email if obj.worker else 'N/A'
+    worker_display.short_description = 'Trabajador'
+    
+    def rating_display(self, obj):
+        """Muestra el rating con estrellas"""
+        return f"{obj.rating}⭐" if obj.rating else 'N/A'
+    rating_display.short_description = 'Rating'
+    
+    def comment_preview(self, obj):
+        """Muestra preview del comentario"""
+        return obj.comment[:50] + '...' if len(obj.comment) > 50 else obj.comment
+    comment_preview.short_description = 'Comentario'
+    
+    def has_delete_permission(self, request, obj=None):
+        """
+        Permite eliminar reviews solo si tienen menos de 7 días.
+        """
+        if obj and not obj.can_edit:
+            return False
+        return super().has_delete_permission(request, obj)
+    
+    def has_change_permission(self, request, obj=None):
+        """
+        Permite editar reviews solo si tienen menos de 7 días.
+        """
+        if obj and not obj.can_edit:
+            return False
+        return super().has_change_permission(request, obj)
