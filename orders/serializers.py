@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 from django.db import transaction
 from decimal import Decimal
-from .models import ServiceOrder, WorkHoursLog, Message
+from .models import ServiceOrder, WorkHoursLog, Message, Review
 
 
 class ServiceOrderSerializer(serializers.ModelSerializer):
@@ -405,3 +405,162 @@ class MessageSerializer(serializers.ModelSerializer):
             )
         
         return cleaned_value
+
+
+class ReviewSerializer(serializers.ModelSerializer):
+    """
+    Serializador completo para Review.
+    Incluye información del reviewer, worker y orden.
+    """
+    reviewer = serializers.SerializerMethodField()
+    worker = serializers.SerializerMethodField()
+    service_order_id = serializers.IntegerField(source='service_order.id', read_only=True)
+    can_edit = serializers.BooleanField(read_only=True)
+    
+    class Meta:
+        model = Review
+        fields = [
+            'id',
+            'service_order',
+            'service_order_id',
+            'reviewer',
+            'worker',
+            'rating',
+            'comment',
+            'created_at',
+            'can_edit'
+        ]
+        read_only_fields = ['reviewer', 'worker', 'service_order_id', 'created_at', 'can_edit']
+    
+    def get_reviewer(self, obj):
+        """
+        Retorna información del reviewer (cliente).
+        """
+        reviewer = obj.reviewer
+        if not reviewer:
+            return None
+        return {
+            'id': str(reviewer.id),
+            'first_name': reviewer.first_name,
+            'last_name': reviewer.last_name,
+            'email': reviewer.email
+        }
+    
+    def get_worker(self, obj):
+        """
+        Retorna información del trabajador evaluado.
+        """
+        worker = obj.worker
+        if not worker:
+            return None
+        return {
+            'id': str(worker.id),
+            'user': {
+                'id': str(worker.user.id),
+                'first_name': worker.user.first_name,
+                'last_name': worker.user.last_name,
+                'email': worker.user.email
+            },
+            'profession': worker.profession,
+            'average_rating': str(worker.average_rating)
+        }
+
+
+class ReviewCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializador para crear reviews.
+    Solo requiere rating y comment, el service_order viene de la URL.
+    """
+    class Meta:
+        model = Review
+        fields = ['rating', 'comment']
+    
+    def validate_rating(self, value):
+        """
+        Valida que el rating esté entre 1 y 5.
+        """
+        if value < 1 or value > 5:
+            raise serializers.ValidationError(
+                _("El rating debe estar entre 1 y 5 estrellas.")
+            )
+        return value
+    
+    def validate_comment(self, value):
+        """
+        Valida el comentario.
+        """
+        if not value or not value.strip():
+            raise serializers.ValidationError(
+                _("El comentario no puede estar vacío.")
+            )
+        
+        if len(value.strip()) < 10:
+            raise serializers.ValidationError(
+                _("El comentario debe tener al menos 10 caracteres.")
+            )
+        
+        return value.strip()
+    
+    def validate(self, attrs):
+        """
+        Validaciones adicionales a nivel de serializador.
+        """
+        # La orden viene del contexto
+        service_order = self.context.get('service_order')
+        request_user = self.context.get('request').user
+        
+        if not service_order:
+            raise serializers.ValidationError(
+                _("No se encontró la orden de servicio.")
+            )
+        
+        # Validar que la orden esté completada
+        if service_order.status != 'COMPLETED':
+            raise serializers.ValidationError(
+                _("Solo se pueden crear reviews para órdenes completadas.")
+            )
+        
+        # Validar que el usuario sea el cliente de la orden
+        if service_order.client != request_user:
+            raise serializers.ValidationError(
+                _("Solo el cliente puede crear reviews.")
+            )
+        
+        # Validar que no exista review previa
+        if hasattr(service_order, 'review'):
+            raise serializers.ValidationError(
+                _("Ya existe una review para esta orden.")
+            )
+        
+        attrs['service_order'] = service_order
+        return attrs
+    
+    def create(self, validated_data):
+        """
+        Crea la review.
+        """
+        return Review.objects.create(**validated_data)
+
+
+class WorkerReviewsSerializer(serializers.Serializer):
+    """
+    Serializador para listar reviews de un trabajador.
+    """
+    worker = serializers.SerializerMethodField()
+    reviews = ReviewSerializer(many=True, read_only=True)
+    
+    def get_worker(self, obj):
+        """
+        Retorna información del trabajador.
+        """
+        worker = obj.get('worker')
+        if not worker:
+            return None
+        
+        return {
+            'id': str(worker.id),
+            'name': f"{worker.user.first_name} {worker.user.last_name}".strip() or worker.user.email,
+            'profession': worker.get_profession_display(),
+            'average_rating': str(worker.average_rating),
+            'total_reviews': obj.get('total_reviews', 0)
+        }

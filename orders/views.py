@@ -11,16 +11,19 @@ from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 from users.models import WorkerProfile
-from .models import ServiceOrder, WorkHoursLog, Message
+from .models import ServiceOrder, WorkHoursLog, Message, Review
 from .serializers import (
     ServiceOrderSerializer,
     ServiceOrderStatusSerializer,
     WorkHoursLogSerializer,
     WorkHoursLogUpdateSerializer,
     WorkHoursApprovalSerializer,
-    MessageSerializer
+    MessageSerializer,
+    ReviewSerializer,
+    ReviewCreateSerializer,
+    WorkerReviewsSerializer
 )
-from .permissions import IsOrderParticipant, CanChangeOrderStatus
+from .permissions import IsOrderParticipant, CanChangeOrderStatus, IsOrderClient
 
 # Configuración del logger
 logger = logging.getLogger(__name__)
@@ -435,3 +438,162 @@ def order_messages(request, pk):
         'limit_applied': limit,
         'messages': serializer.data
     }, status=status.HTTP_200_OK)
+
+
+class CreateReviewView(generics.CreateAPIView):
+    """
+    Crea una review para una orden completada.
+    
+    **Restricciones**:
+    - Solo el cliente de la orden puede crear la review
+    - La orden debe estar en estado COMPLETED
+    - Solo se permite una review por orden (OneToOneField)
+    - Rating debe estar entre 1 y 5 estrellas
+    - Comentario debe tener al menos 10 caracteres
+    
+    **Request Body**:
+    ```json
+    {
+        "rating": 5,
+        "comment": "Excelente trabajo, muy profesional y puntual"
+    }
+    ```
+    
+    **Response 201**:
+    ```json
+    {
+        "id": 1,
+        "service_order_id": 38,
+        "reviewer": {
+            "id": "6",
+            "first_name": "Juan",
+            "last_name": "Pérez",
+            "email": "cliente@example.com"
+        },
+        "worker": {
+            "id": "4",
+            "profession": "ELECTRICIAN",
+            "average_rating": "4.85"
+        },
+        "rating": 5,
+        "comment": "Excelente trabajo...",
+        "created_at": "2026-01-21T18:12:44Z",
+        "can_edit": true
+    }
+    ```
+    
+    **Errores**:
+    - 400: Orden no completada / Review duplicada / Validación fallida
+    - 403: Usuario no es el cliente de la orden
+    - 404: Orden no encontrada
+    """
+    serializer_class = ReviewCreateSerializer
+    permission_classes = [IsAuthenticated, IsOrderClient]
+    
+    def get_object(self):
+        """Obtiene la orden de servicio desde la URL para validar permisos."""
+        order_id = self.kwargs.get('order_id')
+        order = get_object_or_404(
+            ServiceOrder.objects.select_related('client', 'worker', 'worker__user'),
+            pk=order_id
+        )
+        return order
+    
+    def create(self, request, *args, **kwargs):
+        """
+        Crea la review con validaciones.
+        """
+        service_order = self.get_object()
+        
+        # Verificar permisos a nivel de objeto
+        self.check_object_permissions(request, service_order)
+        
+        # Pasar contexto al serializador
+        serializer = self.get_serializer(
+            data=request.data,
+            context={
+                'request': request,
+                'service_order': service_order
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+        review = serializer.save()
+        
+        logger.info(
+            f"Review creada: Orden #{service_order.id}, Rating {review.rating}⭐ "
+            f"por {request.user.email}"
+        )
+        
+        # Retornar serializador completo con toda la información
+        full_serializer = ReviewSerializer(review)
+        return Response(full_serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def worker_reviews(request, worker_id):
+    """
+    Lista todas las reviews de un trabajador.
+    
+    **Permisos**: Público para cualquier usuario autenticado.
+    
+    **Response 200**:
+    ```json
+    {
+        "worker": {
+            "id": "4",
+            "name": "María García",
+            "profession": "Electricista",
+            "average_rating": "4.85",
+            "total_reviews": 23
+        },
+        "reviews": [
+            {
+                "id": 1,
+                "reviewer": {
+                    "first_name": "Juan",
+                    "last_name": "Pérez"
+                },
+                "rating": 5,
+                "comment": "Excelente trabajo...",
+                "created_at": "2026-01-21T16:45:00Z",
+                "service_order_id": 32
+            }
+        ]
+    }
+    ```
+    
+    **Errores**:
+    - 404: Trabajador no encontrado
+    """
+    # Obtener el trabajador
+    worker = get_object_or_404(
+        WorkerProfile.objects.select_related('user'),
+        pk=worker_id
+    )
+    
+    # Obtener todas las reviews del trabajador
+    reviews = Review.objects.filter(
+        service_order__worker=worker
+    ).select_related(
+        'service_order',
+        'service_order__client',
+        'service_order__worker',
+        'service_order__worker__user'
+    ).order_by('-created_at')
+    
+    # Preparar datos
+    data = {
+        'worker': worker,
+        'total_reviews': reviews.count(),
+        'reviews': reviews
+    }
+    
+    serializer = WorkerReviewsSerializer(data)
+    
+    logger.debug(
+        f"Recuperadas {reviews.count()} reviews del trabajador {worker_id} "
+        f"por {request.user.email}"
+    )
+    
+    return Response(serializer.data, status=status.HTTP_200_OK)

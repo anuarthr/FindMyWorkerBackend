@@ -30,3 +30,19 @@ class CanChangeOrderStatus(permissions.BasePermission):
             return obj.client == user or obj.worker.user == user
 
         return False
+
+
+class IsOrderClient(permissions.BasePermission):
+    """
+    Permiso personalizado: Solo el cliente de la orden puede crear review.
+    """
+    message = "Solo el cliente de esta orden puede crear una review."
+    
+    def has_permission(self, request, view):
+        """Nivel de vista: verificar autenticación"""
+        return request.user and request.user.is_authenticated
+    
+    def has_object_permission(self, request, view, obj):
+        """Nivel de objeto: verificar ownership de la orden"""
+        # obj es ServiceOrder
+        return obj.client.id == request.user.id

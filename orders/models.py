@@ -2,7 +2,10 @@ from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator, MaxValueValidator, MinLengthValidator
 from decimal import Decimal
+from django.utils import timezone
+from datetime import timedelta
 
 
 class ServiceOrder(models.Model):
@@ -297,3 +300,87 @@ class Message(models.Model):
             )
             if not is_participant:
                 raise ValidationError(_("Solo los participantes de la orden pueden enviar mensajes."))
+
+
+class Review(models.Model):
+    """
+    Review de un cliente sobre un trabajador después de completar una orden.
+    Relación 1:1 con ServiceOrder (una orden = una review máximo).
+    """
+    service_order = models.OneToOneField(
+        ServiceOrder,
+        on_delete=models.CASCADE,
+        related_name='review',
+        verbose_name=_('Service Order')
+    )
+    rating = models.IntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text=_("Calificación de 1 a 5 estrellas"),
+        verbose_name=_('Rating')
+    )
+    comment = models.TextField(
+        validators=[MinLengthValidator(10)],
+        help_text=_("Mínimo 10 caracteres"),
+        verbose_name=_('Comment')
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name=_('Created At')
+    )
+    
+    class Meta:
+        db_table = 'reviews'
+        verbose_name = _('Review')
+        verbose_name_plural = _('Reviews')
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['service_order'], name='review_order_idx'),
+            models.Index(fields=['-created_at'], name='review_created_idx'),
+        ]
+    
+    def __str__(self):
+        return f"Review {self.rating}⭐ - Orden #{self.service_order.id}"
+    
+    @property
+    def reviewer(self):
+        """El reviewer es siempre el cliente de la orden"""
+        return self.service_order.client
+    
+    @property
+    def worker(self):
+        """El trabajador evaluado"""
+        return self.service_order.worker
+    
+    @property
+    def can_edit(self):
+        """
+        Verifica si la review puede ser editada.
+        Las reviews son inmutables después de 7 días.
+        """
+        time_since_creation = timezone.now() - self.created_at
+        return time_since_creation < timedelta(days=7)
+    
+    def clean(self):
+        """
+        Validaciones a nivel de modelo para Review.
+        """
+        super().clean()
+        
+        # Validar que la orden esté completada
+        if self.service_order and self.service_order.status != 'COMPLETED':
+            raise ValidationError(_("Solo se pueden crear reviews para órdenes completadas."))
+        
+        # Validar que el rating esté en el rango correcto
+        if self.rating and (self.rating < 1 or self.rating > 5):
+            raise ValidationError({'rating': _("El rating debe estar entre 1 y 5.")})
+        
+        # Validar longitud del comentario
+        if self.comment and len(self.comment.strip()) < 10:
+            raise ValidationError({'comment': _("El comentario debe tener al menos 10 caracteres.")})
+    
+    def save(self, *args, **kwargs):
+        """
+        Override del método save para ejecutar validaciones.
+        """
+        self.full_clean()
+        super().save(*args, **kwargs)

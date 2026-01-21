@@ -15,10 +15,17 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    worker_profile = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'first_name', 'last_name', 'role'] 
+        fields = ['email', 'password', 'first_name', 'last_name', 'role', 'worker_profile'] 
+
+    def get_worker_profile(self, obj):
+        """Retorna el ID del worker profile si el usuario es WORKER"""
+        if obj.role == 'WORKER' and hasattr(obj, 'worker_profile'):
+            return obj.worker_profile.id
+        return None
 
     def create(self, validated_data):
         user = User.objects.create_user(
