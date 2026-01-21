@@ -8,7 +8,9 @@ from .views import (
     worker_metrics,
     WorkHoursLogViewSet,
     order_price_summary,
-    order_messages
+    order_messages,
+    CreateReviewView,
+    worker_reviews
 )
 
 router = routers.SimpleRouter()
@@ -40,4 +42,7 @@ urlpatterns = [
     path('<int:order_pk>/work-hours/<int:pk>/approve/', work_hours_approve, name='order-work-hours-approve'),
     path('<int:pk>/price-summary/', order_price_summary, name='order-price-summary'),
     path('<int:pk>/messages/', order_messages, name='order-messages'),
+    # Reviews
+    path('<int:order_id>/review/', CreateReviewView.as_view(), name='order-create-review'),
+    path('workers/<int:worker_id>/reviews/', worker_reviews, name='worker-reviews'),
 ] + router.urls
