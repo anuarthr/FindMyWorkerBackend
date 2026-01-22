@@ -146,6 +146,19 @@ REST_FRAMEWORK = {
     'DEFAULT_PARSER_CLASSES': (
         'rest_framework.parsers.JSONParser',
     ),
+    # Pagination settings
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,  # Default: 10 items por página
+    # Throttling (Rate Limiting)
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',    # Usuarios no autenticados
+        'user': '1000/hour',   # Usuarios autenticados (general)
+        'reviews': '10/hour',  # Específico para crear reviews
+    }
 }
 
 # Configuración de JWT (JSON Web Tokens)
