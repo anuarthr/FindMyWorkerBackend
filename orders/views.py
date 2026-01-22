@@ -21,9 +21,11 @@ from .serializers import (
     MessageSerializer,
     ReviewSerializer,
     ReviewCreateSerializer,
-    WorkerReviewsSerializer
+    ReviewListSerializer
 )
 from .permissions import IsOrderParticipant, CanChangeOrderStatus, IsOrderClient
+from .pagination import ReviewPagination
+from .throttles import ReviewCreateThrottle
 
 # Configuración del logger
 logger = logging.getLogger(__name__)
@@ -444,6 +446,8 @@ class CreateReviewView(generics.CreateAPIView):
     """
     Crea una review para una orden completada.
     
+    **Throttling**: 10 requests/hour por usuario.
+    
     **Restricciones**:
     - Solo el cliente de la orden puede crear la review
     - La orden debe estar en estado COMPLETED
@@ -486,9 +490,11 @@ class CreateReviewView(generics.CreateAPIView):
     - 400: Orden no completada / Review duplicada / Validación fallida
     - 403: Usuario no es el cliente de la orden
     - 404: Orden no encontrada
+    - 429: Rate limit excedido (más de 10 reviews/hora)
     """
     serializer_class = ReviewCreateSerializer
     permission_classes = [IsAuthenticated, IsOrderClient]
+    throttle_classes = [ReviewCreateThrottle]
     
     def get_object(self):
         """Obtiene la orden de servicio desde la URL para validar permisos."""
@@ -533,21 +539,28 @@ class CreateReviewView(generics.CreateAPIView):
 @permission_classes([IsAuthenticated])
 def worker_reviews(request, worker_id):
     """
-    Lista todas las reviews de un trabajador.
+    Lista paginada de reviews de un trabajador.
     
     **Permisos**: Público para cualquier usuario autenticado.
+    
+    **Query Parameters**:
+    - page: Número de página (default: 1)
+    - page_size: Reviews por página (default: 10, max: 100)
     
     **Response 200**:
     ```json
     {
+        "count": 48,
+        "next": "http://example.com/api/workers/4/reviews/?page=2",
+        "previous": null,
         "worker": {
             "id": "4",
             "name": "María García",
             "profession": "Electricista",
             "average_rating": "4.85",
-            "total_reviews": 23
+            "total_reviews": 48
         },
-        "reviews": [
+        "results": [
             {
                 "id": 1,
                 "reviewer": {
@@ -557,7 +570,8 @@ def worker_reviews(request, worker_id):
                 "rating": 5,
                 "comment": "Excelente trabajo...",
                 "created_at": "2026-01-21T16:45:00Z",
-                "service_order_id": 32
+                "service_order_id": 32,
+                "can_edit": false
             }
         ]
     }
@@ -572,28 +586,34 @@ def worker_reviews(request, worker_id):
         pk=worker_id
     )
     
-    # Obtener todas las reviews del trabajador
-    reviews = Review.objects.filter(
+    # Queryset optimizado
+    queryset = Review.objects.filter(
         service_order__worker=worker
-    ).select_related(
-        'service_order',
-        'service_order__client',
-        'service_order__worker',
-        'service_order__worker__user'
-    ).order_by('-created_at')
+    ).select_related('service_order__client').order_by('-created_at')
     
-    # Preparar datos
-    data = {
-        'worker': worker,
-        'total_reviews': reviews.count(),
-        'reviews': reviews
+    # Aplicar paginación
+    paginator = ReviewPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    
+    # Serializar reviews
+    serializer = ReviewListSerializer(page, many=True)
+    
+    # Preparar datos del worker para el response
+    worker_data = {
+        'id': str(worker.id),
+        'name': f"{worker.user.first_name} {worker.user.last_name}".strip() or worker.user.email,
+        'profession': worker.get_profession_display(),
+        'average_rating': str(worker.average_rating),
+        'total_reviews': queryset.count()
     }
     
-    serializer = WorkerReviewsSerializer(data)
+    # Pasar worker_data al paginador via contexto
+    request.parser_context = {'worker_data': worker_data}
     
     logger.debug(
-        f"Recuperadas {reviews.count()} reviews del trabajador {worker_id} "
+        f"Recuperadas {queryset.count()} reviews del trabajador {worker_id} "
         f"por {request.user.email}"
     )
     
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    # Retornar response paginado
+    return paginator.get_paginated_response(serializer.data)
