@@ -10,7 +10,8 @@ from .views import (
     order_price_summary,
     order_messages,
     CreateReviewView,
-    worker_reviews
+    worker_reviews,
+    list_reviews
 )
 
 router = routers.SimpleRouter()

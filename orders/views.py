@@ -617,3 +617,114 @@ def worker_reviews(request, worker_id):
     
     # Retornar response paginado
     return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_reviews(request):
+    """
+    Lista paginada de reviews filtradas por trabajador.
+    
+    **Endpoint:** GET /api/reviews/?worker={worker_id}&page={page}&page_size={page_size}
+    
+    **Query Parameters** (requeridos):
+    - worker (int): ID del WorkerProfile (no User ID)
+    - page (int, opcional): Número de página (default: 1)
+    - page_size (int, opcional): Items por página (default: 10, max: 100)
+    
+    **Response 200**:
+    ```json
+    {
+        "count": 25,
+        "next": "http://...?page=2",
+        "previous": null,
+        "results": [
+            {
+                "id": 1,
+                "reviewer": {
+                    "id": 3,
+                    "first_name": "Juan",
+                    "last_name": "Pérez"
+                },
+                "rating": 5,
+                "comment": "Excelente trabajo, muy profesional",
+                "created_at": "2026-01-20T15:30:00Z",
+                "service_order_id": 42
+            }
+        ],
+        "worker": {
+            "id": 8,
+            "average_rating": "4.85",
+            "total_reviews": 25
+        }
+    }
+    ```
+    
+    **Errores**:
+    - 400: Parámetro 'worker' requerido
+    - 404: Trabajador no encontrado
+    """
+    # Validar que el parámetro worker esté presente
+    worker_id = request.query_params.get('worker')
+    
+    if not worker_id:
+        return Response(
+            {'error': "El parámetro 'worker' es requerido"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Obtener el trabajador
+    worker = get_object_or_404(
+        WorkerProfile.objects.select_related('user'),
+        pk=worker_id
+    )
+    
+    # Queryset optimizado - solo reviews de órdenes completadas
+    queryset = Review.objects.filter(
+        service_order__worker=worker,
+        service_order__status='COMPLETED'
+    ).select_related('service_order__client').order_by('-created_at')
+    
+    # Aplicar paginación
+    paginator = ReviewPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    
+    # Serializar reviews con ID del reviewer
+    reviews_data = []
+    for review in page:
+        reviews_data.append({
+            'id': review.id,
+            'reviewer': {
+                'id': review.reviewer.id,
+                'first_name': review.reviewer.first_name,
+                'last_name': review.reviewer.last_name
+            },
+            'rating': review.rating,
+            'comment': review.comment,
+            'created_at': review.created_at.isoformat(),
+            'service_order_id': review.service_order.id
+        })
+    
+    # Preparar datos del worker
+    worker_data = {
+        'id': worker.id,
+        'average_rating': str(worker.average_rating),
+        'total_reviews': queryset.count()
+    }
+    
+    # Pasar worker_data al paginador via contexto
+    request.parser_context = {'worker_data': worker_data}
+    
+    logger.info(
+        f"Recuperadas {len(reviews_data)} reviews del worker {worker_id} "
+        f"(total: {queryset.count()}) por {request.user.email}"
+    )
+    
+    # Retornar response paginado customizado
+    return Response({
+        'count': paginator.page.paginator.count,
+        'next': paginator.get_next_link(),
+        'previous': paginator.get_previous_link(),
+        'results': reviews_data,
+        'worker': worker_data
+    }, status=status.HTTP_200_OK)

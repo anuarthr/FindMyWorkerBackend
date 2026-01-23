@@ -4,6 +4,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework.routers import DefaultRouter
 from users.views import RegisterView, ManageWorkerProfileView, WorkerAdminViewSet, CustomTokenObtainPairView
 from users.views_public import WorkerDiscoveryViewSet
+from orders.views import list_reviews
 
 router = DefaultRouter()
 router.register(r'api/workers', WorkerDiscoveryViewSet, basename='worker-discovery')
@@ -18,6 +19,7 @@ urlpatterns = [
     path('api/users/', include('users.urls')),
     path('api/workers/me/', ManageWorkerProfileView.as_view(), name='worker_profile'),
     path('api/orders/', include('orders.urls')),
+    path('api/reviews/', list_reviews, name='list-reviews'),
     path('', include(router.urls)),
     path('', include(admin_router.urls)),
 ]
