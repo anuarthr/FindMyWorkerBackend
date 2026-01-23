@@ -23,7 +23,12 @@ from .serializers import (
     ReviewCreateSerializer,
     ReviewListSerializer
 )
-from .permissions import IsOrderParticipant, CanChangeOrderStatus, IsOrderClient
+from .permissions import (
+    IsOrderParticipant, 
+    CanChangeOrderStatus, 
+    IsOrderClient,
+    IsOrderParticipantReadOnly
+)
 from .pagination import ReviewPagination
 from .throttles import ReviewCreateThrottle
 
@@ -728,3 +733,99 @@ def list_reviews(request):
         'results': reviews_data,
         'worker': worker_data
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsOrderParticipantReadOnly])
+def get_order_review(request, order_id):
+    """
+    Obtiene la review de una orden específica.
+    
+    **Endpoint:** GET /api/orders/{order_id}/review/
+    
+    **Permisos:**
+    - Solo el cliente o trabajador de la orden pueden ver la review
+    - La review es pública una vez creada (para participantes)
+    
+    **Response 200 OK** - Review existe:
+    ```json
+    {
+        "id": 15,
+        "reviewer": {
+            "id": 6,
+            "first_name": "Juan",
+            "last_name": "Pérez"
+        },
+        "rating": 5,
+        "comment": "Excelente trabajo, muy profesional y puntual",
+        "created_at": "2026-01-22T18:30:00Z",
+        "service_order_id": 42
+    }
+    ```
+    
+    **Response 404 Not Found** - No existe review para esta orden:
+    ```json
+    {
+        "detail": "No se encontró una evaluación para esta orden."
+    }
+    ```
+    
+    **Notas:**
+    - Solo existe una review por orden
+    - Solo el cliente puede crear la review
+    - La orden debe estar en estado COMPLETED para tener review
+    - El reviewer debe ser el cliente de la orden (reviewer_id == order.client_id)
+    """
+    # Obtener la orden y verificar existencia
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related('client', 'worker__user'),
+        pk=order_id
+    )
+    
+    # Verificar permisos manualmente (el decorador verifica has_permission, 
+    # pero necesitamos verificar has_object_permission)
+    permission = IsOrderParticipantReadOnly()
+    if not permission.has_object_permission(request, None, order):
+        logger.warning(
+            f"Usuario {request.user.email} intentó acceder a review de orden {order_id} "
+            f"sin ser participante"
+        )
+        return Response(
+            {'detail': 'No tienes permiso para ver esta información.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Intentar obtener la review
+    try:
+        review = Review.objects.select_related('service_order__client').get(
+            service_order=order
+        )
+        
+        # Serializar la review
+        response_data = {
+            'id': review.id,
+            'reviewer': {
+                'id': review.reviewer.id,
+                'first_name': review.reviewer.first_name,
+                'last_name': review.reviewer.last_name
+            },
+            'rating': review.rating,
+            'comment': review.comment,
+            'created_at': review.created_at.isoformat(),
+            'service_order_id': review.service_order.id
+        }
+        
+        logger.info(
+            f"Review #{review.id} de orden {order_id} recuperada por {request.user.email}"
+        )
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Review.DoesNotExist:
+        logger.info(
+            f"No se encontró review para orden {order_id}. Usuario: {request.user.email}"
+        )
+        return Response(
+            {'detail': 'No se encontró una evaluación para esta orden.'},
+            status=status.HTTP_404_NOT_FOUND
+        )

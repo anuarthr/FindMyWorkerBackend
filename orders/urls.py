@@ -11,7 +11,8 @@ from .views import (
     order_messages,
     CreateReviewView,
     worker_reviews,
-    list_reviews
+    list_reviews,
+    get_order_review
 )
 
 router = routers.SimpleRouter()
@@ -37,6 +38,7 @@ urlpatterns = [
     path('list/', ServiceOrderListView.as_view(), name='order-list'),
     path('<int:pk>/', ServiceOrderDetailView.as_view(), name='order-detail'),
     path('<int:pk>/status/', ServiceOrderStatusUpdateView.as_view(), name='order-status-update'),
+    path('<int:order_id>/review/', get_order_review, name='order-review'),
     path('workers/me/metrics/', worker_metrics, name='worker-metrics'),
     path('<int:order_pk>/work-hours/', work_hours_list, name='order-work-hours-list'),
     path('<int:order_pk>/work-hours/<int:pk>/', work_hours_detail, name='order-work-hours-detail'),

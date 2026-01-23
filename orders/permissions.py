@@ -46,3 +46,31 @@ class IsOrderClient(permissions.BasePermission):
         """Nivel de objeto: verificar ownership de la orden"""
         # obj es ServiceOrder
         return obj.client.id == request.user.id
+
+
+class IsOrderParticipantReadOnly(permissions.BasePermission):
+    """
+    Permiso personalizado: Solo el cliente o trabajador de la orden pueden ver (GET).
+    Usado específicamente para endpoints de solo lectura.
+    """
+    message = "Solo los participantes de esta orden pueden ver esta información."
+    
+    def has_permission(self, request, view):
+        """Nivel de vista: verificar autenticación y método"""
+        # Solo permitir método GET
+        if request.method != 'GET':
+            return False
+        return request.user and request.user.is_authenticated
+    
+    def has_object_permission(self, request, view, obj):
+        """Nivel de objeto: verificar que el usuario sea participante"""
+        # obj puede ser Review u Order
+        if hasattr(obj, 'service_order'):
+            order = obj.service_order
+        else:
+            order = obj
+        
+        return (
+            order.client.id == request.user.id or 
+            order.worker.user.id == request.user.id
+        )
