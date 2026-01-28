@@ -18,10 +18,10 @@ Sistema de recomendación inteligente basado en IA para conectar clientes con tr
 - Django 6.0 + Django REST Framework
 - Django Channels 4.0.0 (WebSocket)
 - PostgreSQL + PostGIS
-- Redis 5.0.1
-- scikit-learn 1.4.0 (Machine Learning)
-- NLTK 3.8.1 (NLP español)
-- joblib 1.3.2 (Model caching)
+- Redis 4.6.0 + django-redis 5.2.0
+- scikit-learn 1.4.0+ (Machine Learning)
+- NLTK 3.8.1+ (NLP español)
+- joblib 1.3.2+ (Model caching)
 
 ## Instalación
 
