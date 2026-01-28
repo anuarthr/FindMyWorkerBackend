@@ -28,14 +28,12 @@ class RecommendationAPITestCase(TestCase):
         """Setup inicial."""
         self.client = APIClient()
         
-        # Crear usuario cliente
         self.user = User.objects.create_user(
             email='cliente@test.com',
             password='test123',
             role='CLIENT'
         )
         
-        # Crear admin
         self.admin = User.objects.create_user(
             email='admin@test.com',
             password='admin123',
@@ -43,7 +41,6 @@ class RecommendationAPITestCase(TestCase):
             is_staff=True
         )
         
-        # Crear trabajadores
         self._create_test_workers()
     
     def _create_test_workers(self):
@@ -110,17 +107,14 @@ class RecommendationAPITestCase(TestCase):
         """Test con datos inválidos."""
         url = reverse('worker-recommend')
         
-        # Query vacía
         data = {'query': '', 'strategy': 'tfidf'}
         response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         
-        # Estrategia inválida
         data = {'query': 'test', 'strategy': 'invalid'}
         response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         
-        # Latitude sin longitude
         data = {'query': 'test', 'latitude': 4.7}
         response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -142,7 +136,6 @@ class RecommendationAPITestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(RecommendationLog.objects.count(), initial_count + 1)
         
-        # Verificar datos del log
         log = RecommendationLog.objects.latest('created_at')
         self.assertEqual(log.query, 'plomero')
         self.assertEqual(log.strategy_used, 'tfidf')
@@ -151,23 +144,19 @@ class RecommendationAPITestCase(TestCase):
         """Test que analytics requiere autenticación de admin."""
         url = reverse('recommendation-analytics')
         
-        # Sin autenticación
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         
-        # Con usuario normal (no admin)
         self.client.force_authenticate(user=self.user)
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         
-        # Con admin
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(url)
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_200_OK])
     
     def test_analytics_endpoint_with_data(self):
         """Test del endpoint de analytics con datos."""
-        # Crear algunos logs
         for i in range(5):
             RecommendationLog.objects.create(
                 query=f'test query {i}',
@@ -210,7 +199,6 @@ class RecommendationAPITestCase(TestCase):
         
         response = self.client.get(url)
         
-        # Con pocos trabajadores, debería tener recomendaciones
         if response.data.get('status') == 'degraded':
             self.assertIn('recommendations', response.data)
             self.assertGreater(len(response.data['recommendations']), 0)
@@ -228,7 +216,6 @@ class RecommendationRateLimitingTestCase(TestCase):
             role='CLIENT'
         )
         
-        # Crear al menos un trabajador
         worker_user = User.objects.create_user(
             email='worker@test.com',
             password='test123',
@@ -242,15 +229,15 @@ class RecommendationRateLimitingTestCase(TestCase):
         )
     
     def test_rate_limiting_applied(self):
-        """Test que se aplica rate limiting (nota: difícil de probar sin muchas requests)."""
+        """Test que se aplica rate limiting.
+        
+        Nota: Para verificar throttling completo requeriría 60+ requests consecutivas,
+        lo cual haría el test muy lento. Verificamos solo que el mecanismo existe.
+        """
         self.client.force_authenticate(user=self.user)
         url = reverse('worker-recommend')
         
         data = {'query': 'test', 'strategy': 'fallback', 'top_n': 1}
         
-        # Primera request debe funcionar
         response = self.client.post(url, data, format='json')
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_503_SERVICE_UNAVAILABLE])
-        
-        # Nota: Para probar throttling completo, necesitaríamos hacer 60+ requests
-        # lo cual haría el test muy lento. Verificamos solo que el mecanismo existe.
