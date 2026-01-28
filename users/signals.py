@@ -32,11 +32,17 @@ def invalidate_recommendation_cache(sender, instance, **kwargs):
     """
     # Solo invalidar en updates, no en creación
     if not kwargs.get('created', False):
-        cache.delete('recommendation_model_data')
-        cache.delete('recommendation_model_metadata')
-        logger.info(
-            f"Cache de recomendación invalidado por actualización de {instance.user.email}"
-        )
+        try:
+            cache.delete('recommendation_model_data')
+            cache.delete('recommendation_model_metadata')
+            logger.info(
+                f"Cache de recomendación invalidado por actualización de {instance.user.email}"
+            )
+        except Exception as e:
+            # Redis might not be running, log but don't fail
+            logger.warning(
+                f"No se pudo invalidar cache (Redis no disponible): {e}"
+            )
         
         # Nota: El modelo se reentrenará automáticamente en la próxima query
         # o puede reentrenarse manualmente con: python manage.py train_recommendation_model
