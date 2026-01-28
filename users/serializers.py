@@ -167,7 +167,6 @@ class RecommendationRequestSerializer(serializers.Serializer):
         allow_null=True,
         min_value=1,
         max_value=200,
-        default=50,
         help_text="Distancia máxima en kilómetros (solo si latitude/longitude están presentes)"
     )
     

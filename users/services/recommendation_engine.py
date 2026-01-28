@@ -1,8 +1,9 @@
 """
-Recommendation Engine para FindMyWorker - Sistema de Búsqueda Semántica
+Recommendation Engine para FindMyWorker - Sistema de Búsqueda Semántica Multiidioma
 
 Implementa búsqueda semántica usando TF-IDF (Term Frequency-Inverse Document Frequency)
 con estrategias híbridas para recomendación de trabajadores.
+Soporta búsquedas en INGLÉS y ESPAÑOL.
 
 Estrategias disponibles:
     - 'tfidf': Similitud coseno pura basada en contenido (baseline)
@@ -10,11 +11,16 @@ Estrategias disponibles:
     - 'hybrid': Score combinado (50% tfidf + 30% rating + 20% proximidad)
 
 Características:
-    - Stopwords personalizadas del dominio de servicios
-    - Expansión de sinónimos para mejorar recall
-    - Explicabilidad (XAI): keywords matched + score breakdown
-    - Cache Redis con TTL 24h para vectores TF-IDF
-    - Invalidación inteligente cuando se actualizan perfiles
+    - ✅ Búsquedas multiidioma (inglés + español)
+    - ✅ Stopwords personalizadas del dominio de servicios (ambos idiomas)
+    - ✅ Expansión de sinónimos para mejorar recall (ambos idiomas)
+    - ✅ Explicabilidad (XAI): keywords matched + score breakdown
+    - ✅ Cache Redis con TTL 24h para vectores TF-IDF
+    - ✅ Invalidación inteligente cuando se actualizan perfiles
+
+Ejemplos de búsqueda:
+    Inglés: "Need plumber to fix urgent leak in bathroom"
+    Español: "Necesito plomero para reparar fuga urgente en baño"
 
 Autor: FindMyWorker Team
 Fecha: Enero 2026
@@ -43,6 +49,7 @@ logger = logging.getLogger(__name__)
 class RecommendationEngine:
     """
     Motor de recomendación semántica con TF-IDF y estrategias híbridas.
+    Soporta búsquedas en INGLÉS y ESPAÑOL automáticamente.
     
     Attributes:
         cache_ttl (int): Tiempo de vida del cache en segundos (default: 24h)
@@ -52,15 +59,25 @@ class RecommendationEngine:
     
     Examples:
         >>> engine = RecommendationEngine()
+        
+        # Búsqueda en español
         >>> results = engine.get_recommendations(
         ...     query="Plomero urgente para reparar fuga",
+        ...     strategy='hybrid',
+        ...     top_n=5
+        ... )
+        
+        # Búsqueda en inglés
+        >>> results = engine.get_recommendations(
+        ...     query="Need electrician to install solar panels",
         ...     strategy='hybrid',
         ...     top_n=5
         ... )
     """
     
     # Stopwords personalizadas del dominio (además de las NLTK estándar)
-    DOMAIN_STOPWORDS = {
+    # ESPAÑOL
+    DOMAIN_STOPWORDS_ES = {
         # Genéricas del dominio
         'trabajo', 'servicio', 'experiencia', 'años', 'profesional',
         'atención', 'calidad', 'garantía', 'cliente', 'ofrezco',
@@ -76,13 +93,37 @@ class RecommendationEngine:
         'cuenta', 'dispone', 'además', 'también'
     }
     
+    # INGLÉS
+    DOMAIN_STOPWORDS_EN = {
+        # Genéricas del dominio
+        'work', 'service', 'experience', 'years', 'professional',
+        'attention', 'quality', 'warranty', 'customer', 'client',
+        'offer', 'provide', 'perform', 'doing', 'making',
+        
+        # Verbos ultra-comunes
+        'have', 'has', 'had', 'am', 'is', 'are', 'can', 'could',
+        'will', 'would', 'do', 'does', 'did', 'make', 'makes',
+        
+        # Pronombres y artículos
+        'my', 'mine', 'our', 'ours', 'we', 'us',
+        
+        # Términos de relleno
+        'also', 'available', 'additionally', 'furthermore'
+    }
+    
+    # Combinar stopwords de ambos idiomas
+    DOMAIN_STOPWORDS = DOMAIN_STOPWORDS_ES | DOMAIN_STOPWORDS_EN
+    
     # Sinónimos para expansión de queries (mejora recall)
-    SYNONYMS = {
+    # ESPAÑOL
+    SYNONYMS_ES = {
         'plomero': ['fontanero', 'gasfiter', 'tubero', 'plomería', 'tuberías'],
         'electricista': ['eléctrico', 'luz', 'cableado', 'instalación eléctrica'],
         'albañil': ['construcción', 'mampostería', 'obra', 'maestro de obra'],
         'pintor': ['pintura', 'barnizado', 'decoración'],
         'carpintero': ['carpintería', 'madera', 'muebles'],
+        'jardinero': ['jardinería', 'plantas', 'jardines', 'paisajismo'],
+        'mecánico': ['mecánica', 'motor', 'auto', 'coche', 'vehículo'],
         
         # Tipos de problemas
         'fuga': ['goteo', 'filtración', 'derrame', 'pérdida'],
@@ -95,6 +136,34 @@ class RecommendationEngine:
         'cocina': ['cocineta', 'estufa'],
         'techo': ['tejado', 'azotea', 'cubierta'],
     }
+    
+    # INGLÉS
+    SYNONYMS_EN = {
+        'plumber': ['plumbing', 'pipes', 'pipework', 'drainage', 'waterworks'],
+        'electrician': ['electrical', 'electric', 'wiring', 'power', 'electricity'],
+        'mason': ['masonry', 'bricklayer', 'construction', 'builder'],
+        'painter': ['painting', 'decorator', 'decoration'],
+        'carpenter': ['carpentry', 'woodwork', 'joinery', 'furniture'],
+        'gardener': ['gardening', 'landscaping', 'plants', 'lawn'],
+        'mechanic': ['mechanical', 'auto', 'car', 'vehicle', 'engine'],
+        
+        # Tipos de problemas
+        'leak': ['leaking', 'drip', 'seepage', 'water damage'],
+        'broken': ['damaged', 'faulty', 'malfunctioning', 'not working'],
+        'urgent': ['emergency', 'asap', 'immediate', 'quick', 'fast'],
+        'repair': ['fix', 'fixing', 'mend', 'restore', 'service'],
+        'install': ['installation', 'setup', 'mount', 'fit'],
+        
+        # Lugares
+        'bathroom': ['toilet', 'wc', 'restroom', 'lavatory'],
+        'kitchen': ['cooking area', 'galley'],
+        'roof': ['roofing', 'ceiling', 'overhead'],
+        'wall': ['walls', 'partition'],
+        'floor': ['flooring', 'ground'],
+    }
+    
+    # Combinar sinónimos de ambos idiomas
+    SYNONYMS = {**SYNONYMS_ES, **SYNONYMS_EN}
     
     # Pesos para estrategia híbrida (deben sumar 1.0)
     HYBRID_WEIGHTS = {
@@ -187,19 +256,26 @@ class RecommendationEngine:
     def preprocess_text(self, text: str) -> str:
         """
         Preprocesa texto: limpieza, normalización y expansión de sinónimos.
+        Soporta INGLÉS y ESPAÑOL.
         
         Steps:
             1. Convertir a minúsculas
-            2. Remover caracteres especiales
-            3. Remover stopwords personalizadas
-            4. Expandir sinónimos
+            2. Remover caracteres especiales (mantiene letras en inglés y español)
+            3. Expandir sinónimos (ambos idiomas)
+            4. Remover stopwords personalizadas (ambos idiomas)
             5. Remover espacios múltiples
         
         Args:
-            text: Texto a preprocesar
+            text: Texto a preprocesar (inglés o español)
             
         Returns:
             Texto limpio y normalizado
+            
+        Examples:
+            >>> engine.preprocess_text("Need plumber ASAP")
+            "need plumber asap plumbing pipes emergency quick fast"
+            >>> engine.preprocess_text("Necesito plomero urgente")
+            "necesito plomero urgente fontanero gasfiter emergencia rápido"
         """
         if not text:
             return ""
@@ -207,13 +283,13 @@ class RecommendationEngine:
         # Convertir a minúsculas
         text = text.lower()
         
-        # Remover caracteres especiales, mantener solo letras, números y espacios
+        # Remover caracteres especiales, mantener letras (inglés + español), números y espacios
         text = re.sub(r'[^a-záéíóúñü\s]', ' ', text)
         
-        # Expandir sinónimos ANTES de remover stopwords
+        # Expandir sinónimos ANTES de remover stopwords (soporta ambos idiomas)
         text = self.expand_synonyms(text)
         
-        # Remover stopwords personalizadas
+        # Remover stopwords personalizadas (español e inglés)
         words = text.split()
         words = [w for w in words if w not in self.DOMAIN_STOPWORDS]
         text = ' '.join(words)

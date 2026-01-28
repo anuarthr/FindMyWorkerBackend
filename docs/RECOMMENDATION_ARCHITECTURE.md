@@ -1,34 +1,38 @@
-# Sistema de Recomendación Semántica - FindMyWorker
+# Sistema de Recomendación Semántica Multiidioma - FindMyWorker
 
 ## Arquitectura y Decisiones Técnicas
 
 **Autor:** FindMyWorker Team  
 **Fecha:** Enero 2026  
-**Versión:** 1.0
+**Versión:** 2.0 (Multiidioma)
 
 ---
 
 ## 📋 Tabla de Contenidos
 
 1. [Resumen Ejecutivo](#resumen-ejecutivo)
-2. [Decisiones Arquitectónicas](#decisiones-arquitectónicas)
-3. [Fundamentos Teóricos](#fundamentos-teóricos)
-4. [Implementación Técnica](#implementación-técnica)
-5. [Estrategias de Ranking](#estrategias-de-ranking)
-6. [Evaluación y Métricas](#evaluación-y-métricas)
-7. [Optimizaciones de Performance](#optimizaciones-de-performance)
-8. [Trabajo Futuro](#trabajo-futuro)
-9. [Referencias](#referencias)
+2. [🌍 Soporte Multiidioma](#soporte-multiidioma)
+3. [Decisiones Arquitectónicas](#decisiones-arquitectónicas)
+4. [Fundamentos Teóricos](#fundamentos-teóricos)
+5. [Implementación Técnica](#implementación-técnica)
+6. [Estrategias de Ranking](#estrategias-de-ranking)
+7. [Evaluación y Métricas](#evaluación-y-métricas)
+8. [Optimizaciones de Performance](#optimizaciones-de-performance)
+9. [Trabajo Futuro](#trabajo-futuro)
+10. [Referencias](#referencias)
 
 ---
 
 ## 1. Resumen Ejecutivo
 
-FindMyWorker implementa un sistema de recomendación semántica basado en **TF-IDF (Term Frequency-Inverse Document Frequency)** para conectar clientes con trabajadores de servicios mediante búsqueda en lenguaje natural.
+FindMyWorker implementa un sistema de recomendación semántica **multiidioma** basado en **TF-IDF (Term Frequency-Inverse Document Frequency)** para conectar clientes con trabajadores de servicios mediante búsqueda en lenguaje natural.
 
 ### Características Principales
 
-- ✅ **Búsqueda Semántica**: Los usuarios pueden buscar con frases naturales como _"plomero urgente para reparar fuga"_
+- ✅ **Búsqueda Semántica Multiidioma**: Soporta inglés y español automáticamente
+- ✅ **Búsqueda en Lenguaje Natural**: 
+  - 🇪🇸 _"plomero urgente para reparar fuga"_
+  - 🇬🇧 _"need plumber to fix urgent leak"_
 - ✅ **3 Estrategias de Ranking**: TF-IDF puro, Fallback geo-rating, Híbrido combinado
 - ✅ **Explicabilidad (XAI)**: Cada recomendación incluye justificación de por qué se sugirió
 - ✅ **A/B Testing**: Framework para comparar efectividad de diferentes estrategias
@@ -36,7 +40,43 @@ FindMyWorker implementa un sistema de recomendación semántica basado en **TF-I
 
 ---
 
-## 2. Decisiones Arquitectónicas
+## 2. 🌍 Soporte Multiidioma
+
+### 2.1 Idiomas Soportados
+
+- 🇪🇸 **Español**: Stopwords + 65+ sinónimos
+- 🇬🇧 **Inglés**: Stopwords + 75+ sinónimos
+
+### 2.2 Detección Automática
+
+El sistema procesa búsquedas en ambos idiomas **automáticamente** sin configuración:
+
+```python
+# Funciona con español
+GET /api/users/workers/recommend/?query=necesito+electricista+urgente
+
+# Funciona con inglés  
+GET /api/users/workers/recommend/?query=need+electrician+asap
+
+# Funciona con búsquedas mixtas
+GET /api/users/workers/recommend/?query=plumber+urgente+leak
+```
+
+### 2.3 Expansión de Sinónimos Bilingüe
+
+**Español:**
+- `plomero` → fontanero, gasfiter, tubero, plomería
+- `urgente` → emergencia, rápido, inmediato
+
+**Inglés:**
+- `plumber` → plumbing, pipes, drainage, waterworks
+- `urgent` → emergency, asap, immediate, quick
+
+📚 **Ver documentación completa:** [MULTILANGUAGE_AI_SEARCH.md](./MULTILANGUAGE_AI_SEARCH.md)
+
+---
+
+## 3. Decisiones Arquitectónicas
 
 ### 2.1 ¿Por qué TF-IDF y no Embeddings (Word2Vec/BERT)?
 
