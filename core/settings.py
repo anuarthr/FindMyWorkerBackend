@@ -158,6 +158,11 @@ REST_FRAMEWORK = {
         'anon': '100/hour',    # Usuarios no autenticados
         'user': '1000/hour',   # Usuarios autenticados (general)
         'reviews': '10/hour',  # Específico para crear reviews
+        # Throttling para sistema de recomendación (HU2)
+        'recommendation_search': '60/min',       # Búsquedas de recomendación
+        'recommendation_search_anon': '20/min',  # Búsquedas anónimas
+        'recommendation_analytics': '30/min',    # Analytics/métricas
+        'recommendation_health': '10/min',       # Health checks
     }
 }
 
@@ -190,6 +195,20 @@ CHANNEL_LAYERS = {
             'hosts': [(config('REDIS_HOST', default='127.0.0.1'), config('REDIS_PORT', default=6379, cast=int))],
         },
     },
+}
+
+# Configuración de CACHES para Django (Redis DB 1 - separado de Channels)
+# Usado por el sistema de recomendación para cachear el modelo TF-IDF
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': f"redis://{config('REDIS_HOST', default='127.0.0.1')}:{config('REDIS_PORT', default=6379, cast=int)}/1",
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'KEY_PREFIX': 'findmyworker',
+        'TIMEOUT': 86400,  # Default: 24 horas
+    }
 }
 
 # Configuración de CORS (Cross-Origin Resource Sharing)
