@@ -114,12 +114,19 @@ class RecommendationRequestSerializer(serializers.Serializer):
         - Query de búsqueda en lenguaje natural
         - Estrategia de ranking (tfidf/fallback/hybrid)
         - Filtros geográficos y de calidad
+        - Idioma de búsqueda (es/en)
     """
     
     query = serializers.CharField(
         required=True,
         max_length=500,
         help_text="Texto de búsqueda en lenguaje natural. Ej: 'Plomero urgente para reparar fuga'"
+    )
+    
+    language = serializers.ChoiceField(
+        choices=['es', 'en'],
+        default='es',
+        help_text="Idioma de búsqueda: 'es' (español) o 'en' (inglés). Solo español soportado actualmente."
     )
     
     strategy = serializers.ChoiceField(
@@ -167,7 +174,6 @@ class RecommendationRequestSerializer(serializers.Serializer):
         allow_null=True,
         min_value=1,
         max_value=200,
-        default=50,
         help_text="Distancia máxima en kilómetros (solo si latitude/longitude están presentes)"
     )
     
@@ -205,23 +211,46 @@ class RecommendationRequestSerializer(serializers.Serializer):
                 'query': 'La búsqueda debe tener al menos 3 caracteres'
             })
         
+        # Validar idioma (solo español soportado por ahora)
+        language = data.get('language', 'es')
+        if language == 'en':
+            raise serializers.ValidationError({
+                'language': 'Inglés no soportado actualmente. Use "es" para español. Funcionalidad en desarrollo (HU3).'
+            })
+        
         return data
 
 
 class WorkerRecommendationSerializer(serializers.ModelSerializer):
     """
     Serializer para trabajadores recomendados con información adicional de scoring.
+    
+    Incluye campos planos para compatibilidad con frontend y campos detallados
+    para análisis avanzado.
     """
     
     user = UserSerializer(read_only=True)
     latitude = serializers.SerializerMethodField()
     longitude = serializers.SerializerMethodField()
     
-    # Campos adicionales de recomendación
-    score = serializers.FloatField(read_only=True, help_text="Score de relevancia (0-1)")
-    relevance_percentage = serializers.FloatField(read_only=True, help_text="Relevancia en porcentaje")
-    distance_km = serializers.FloatField(read_only=True, required=False, help_text="Distancia en km (si aplica)")
-    explanation = serializers.JSONField(read_only=True, help_text="Explicación de por qué se recomendó (XAI)")
+    # Campos planos para compatibilidad con frontend
+    recommendation_score = serializers.FloatField(
+        read_only=True, 
+        help_text="Score normalizado de relevancia (0-1)"
+    )
+    matched_keywords = serializers.ListField(
+        read_only=True, 
+        help_text="Lista de palabras clave que coinciden con la búsqueda"
+    )
+    explanation = serializers.CharField(
+        read_only=True, 
+        help_text="Explicación en texto de por qué se recomendó este trabajador"
+    )
+    
+    # Campos detallados (backward compatibility)
+    recommendation_details = serializers.SerializerMethodField(
+        help_text="Información detallada del scoring (para análisis avanzado)"
+    )
     
     class Meta:
         model = WorkerProfile
@@ -236,11 +265,12 @@ class WorkerRecommendationSerializer(serializers.ModelSerializer):
             'average_rating',
             'latitude',
             'longitude',
-            # Campos de recomendación
-            'score',
-            'relevance_percentage',
-            'distance_km',
+            # Campos planos de recomendación
+            'recommendation_score',
+            'matched_keywords',
             'explanation',
+            # Campos detallados
+            'recommendation_details',
         ]
         read_only_fields = ['id', 'user', 'is_verified', 'average_rating']
     
@@ -249,6 +279,23 @@ class WorkerRecommendationSerializer(serializers.ModelSerializer):
     
     def get_longitude(self, obj):
         return obj.location.x if obj.location else None
+    
+    def get_recommendation_details(self, obj):
+        """
+        Retorna información detallada del scoring para análisis avanzado.
+        """
+        if not hasattr(obj, '_recommendation_data'):
+            return None
+        
+        data = obj._recommendation_data
+        return {
+            'semantic_similarity': data.get('score', 0),
+            'relevance_percentage': data.get('relevance_percentage', 0),
+            'distance_km': data.get('distance_km'),
+            'distance_factor': data.get('distance_factor'),
+            'normalized_score': data.get('normalized_score'),
+            'matched_terms_count': len(data.get('matched_keywords', [])),
+        }
 
 
 class RecommendationResponseSerializer(serializers.Serializer):
@@ -315,8 +362,8 @@ class RecommendationHealthSerializer(serializers.Serializer):
     """
     
     status = serializers.ChoiceField(
-        choices=['healthy', 'degraded', 'unhealthy'],
-        help_text="Estado general del sistema"
+        choices=['ready', 'training', 'not_trained', 'degraded', 'unhealthy'],
+        help_text="Estado general del sistema: ready (listo), training (entrenando), not_trained (sin entrenar), degraded (degradado), unhealthy (no saludable)"
     )
     
     # Estado del modelo
