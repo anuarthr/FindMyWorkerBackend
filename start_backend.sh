@@ -71,7 +71,7 @@ if [ "$WORKER_COUNT" = "0" ] || [ -z "$WORKER_COUNT" ]; then
     echo "   Puedes agregar trabajadores manualmente o continuar sin recomendaciones."
 elif [ $CACHE_CHECK -ne 0 ] || [ -z "$(redis-cli -n 1 GET ':1:recommendation_model_data' 2>/dev/null)" ]; then
     echo "⚠️  Modelo no entrenado. Entrenando con $WORKER_COUNT trabajadores..."
-    python manage.py train_recommendation_model --quiet
+    python manage.py train_recommendation_model > /dev/null 2>&1
     if [ $? -eq 0 ]; then
         echo "✅ Modelo de recomendación entrenado"
     else
