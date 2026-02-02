@@ -1,0 +1,1069 @@
+# FindMyWorker - Frontend API Documentation
+
+Esta es la documentación completa de la API REST para su uso en el frontend. Incluye todos los endpoints disponibles, estructuras de datos, ejemplos de uso, y códigos de error.
+
+**Base URL:** `http://localhost:8000` (desarrollo) | `https://api.findmyworker.com` (producción)
+
+**Última actualización:** 2026-01-28
+
+---
+
+## 📑 Tabla de Contenidos
+
+1. [Autenticación](#1-autenticación)
+2. [Usuarios](#2-usuarios)
+3. [Trabajadores (Búsqueda Pública)](#3-trabajadores-búsqueda-pública)
+4. [Sistema de Recomendación IA](#4-sistema-de-recomendación-ia)
+5. [Órdenes de Servicio](#5-órdenes-de-servicio)
+6. [Registro de Horas](#6-registro-de-horas)
+7. [Mensajería](#7-mensajería)
+8. [Reseñas](#8-reseñas)
+9. [WebSockets (Chat en Tiempo Real)](#9-websockets)
+10. [Códigos de Error](#10-códigos-de-error)
+11. [Rate Limiting](#11-rate-limiting)
+
+---
+
+## 1. Autenticación
+
+Todos los endpoints (excepto los marcados como públicos) requieren autenticación JWT.
+
+### 1.1 Registro de Usuario
+
+```http
+POST /api/auth/register/
+```
+
+**Request Body:**
+
+```json
+{
+  "email": "usuario@example.com",
+  "password": "contraseña_segura",
+  "first_name": "Juan",
+  "last_name": "Pérez",
+  "role": "CLIENT"  // "CLIENT" | "WORKER"
+}
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "email": "usuario@example.com",
+  "first_name": "Juan",
+  "last_name": "Pérez",
+  "role": "CLIENT",
+  "worker_profile": null  // ID del perfil si role=WORKER
+}
+```
+
+---
+
+### 1.2 Login (Obtener Token)
+
+```http
+POST /api/auth/login/
+```
+
+**Request Body:**
+
+```json
+{
+  "email": "usuario@example.com",
+  "password": "contraseña"
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Uso del Token:**
+
+```javascript
+fetch('/api/users/me/', {
+  headers: {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json'
+  }
+});
+```
+
+---
+
+### 1.3 Refresh Token
+
+```http
+POST /api/auth/refresh/
+```
+
+**Request Body:**
+
+```json
+{
+  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "access": "nuevo_access_token..."
+}
+```
+
+---
+
+## 2. Usuarios
+
+### 2.1 Obtener Perfil Actual
+
+```http
+GET /api/users/me/
+```
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response (200 OK):**
+
+```json
+{
+  "id": 1,
+  "email": "usuario@example.com",
+  "first_name": "Juan",
+  "last_name": "Pérez",
+  "role": "CLIENT",
+  "avatar": "http://example.com/media/avatars/juan.jpg"
+}
+```
+
+---
+
+### 2.2 Actualizar Perfil
+
+```http
+PUT /api/users/me/
+PATCH /api/users/me/
+```
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request Body (PATCH ejemplo):**
+
+```json
+{
+  "first_name": "Juan Carlos",
+  "avatar": "http://..."
+}
+```
+
+**Response (200 OK):** Mismo formato que GET
+
+---
+
+### 2.3 Perfil de Trabajador
+
+```http
+GET /api/workers/me/
+PUT /api/workers/me/
+```
+
+**Headers:** `Authorization: Bearer {token}` (solo usuarios con role=WORKER)
+
+**GET Response:**
+
+```json
+{
+  "id": 5,
+  "user": {
+    "id": 1,
+    "email": "trabajador@example.com",
+    "first_name": "María",
+    "last_name": "González",
+    "role": "WORKER",
+    "avatar": null
+  },
+  "profession": "PLUMBER",
+  "bio": "Plomera con 8 años de experiencia...",
+  "years_experience": 8,
+  "hourly_rate": "350.00",
+  "is_verified": true,
+  "average_rating": 4.7,
+  "latitude": -12.046373,
+  "longitude": -77.042754
+}
+```
+
+**PUT Request:**
+
+```json
+{
+  "profession": "ELECTRICIAN",
+  "bio": "Nueva biografía...",
+  "years_experience": 10,
+  "hourly_rate": "400.00",
+  "latitude": -12.046373,
+  "longitude": -77.042754
+}
+```
+
+**Profesiones disponibles:**
+
+- `PLUMBER` - Plomería
+- `ELECTRICIAN` - Electricista
+- `CARPENTER` - Carpintería
+- `PAINTER` - Pintura
+- `MASON` - Albañilería
+- `PAINTER` - Pintura
+- `CARPENTER` - Carpintería
+- `OTHER` - Otro
+
+---
+
+## 3. Trabajadores (Búsqueda Pública)
+
+### 3.1 Listar Trabajadores
+
+```http
+GET /api/workers/
+```
+
+**Público** - No requiere autenticación
+
+**Query Parameters:**
+
+- `search` (string): Búsqueda por nombre o profesión
+- `profession` (string): Filtrar por profesión (PLUMBER, ELECTRICIAN, etc.)
+- `min_rating` (float): Rating mínimo (0-5)
+- `page` (int): Número de página
+- `page_size` (int): Resultados por página (default: 10, max: 100)
+
+**Ejemplo:**
+
+```
+GET /api/workers/?profession=PLUMBER&min_rating=4.0&page=1&page_size=20
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "count": 45,
+  "next": "http://api.../workers/?page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "user": {
+        "first_name": "Juan",
+        "last_name": "Pérez",
+        "avatar": null
+      },
+      "profession": "PLUMBER",
+      "bio": "Plomero certificado...",
+      "years_experience": 5,
+      "hourly_rate": "300.00",
+      "average_rating": 4.5,
+      "latitude": -12.046373,
+      "longitude": -77.042754
+    }
+  ]
+}
+```
+
+---
+
+### 3.2 Detalle de Trabajador
+
+```http
+GET /api/workers/{id}/
+```
+
+**Público**
+
+**Response (200 OK):** Mismo formato que item en lista
+
+---
+
+## 4. Sistema de Recomendación IA
+
+Sistema de búsqueda semántica basado en Machine Learning (TF-IDF) que analiza biografías de trabajadores.
+
+### 4.1 Búsqueda Semántica
+
+```http
+POST /api/users/workers/recommend/
+```
+
+**Público** (opcional: autenticado para tracking)
+
+**Request Body:**
+
+```json
+{
+  "query": "necesito un plomero urgente para reparar fuga de agua",
+  "language": "es",
+  "strategy": "hybrid",
+  "top_n": 5,
+  
+  "latitude": -12.046373,
+  "longitude": -77.042754,
+  "max_distance_km": 20,
+  "min_rating": 4.0,
+  "profession": "PLUMBER"
+}
+```
+
+**Parámetros:**
+
+| Campo               | Tipo   | Requerido | Default | Descripción                               |
+| ------------------- | ------ | --------- | ------- | ------------------------------------------ |
+| `query`           | string | ✅        | -       | Consulta en lenguaje natural (min 3 chars) |
+| `language`        | string | ❌        | "es"    | "es" o "en" (solo "es" funcional)          |
+| `strategy`        | string | ❌        | "tfidf" | "tfidf", "fallback", "hybrid"              |
+| `top_n`           | int    | ❌        | 5       | Cantidad de resultados (1-20)              |
+| `latitude`        | float  | ❌        | null    | Latitud del usuario                        |
+| `longitude`       | float  | ❌        | null    | Longitud del usuario                       |
+| `max_distance_km` | float  | ❌        | 50      | Radio de búsqueda en km                   |
+| `min_rating`      | float  | ❌        | null    | Rating mínimo (0-5)                       |
+| `profession`      | string | ❌        | null    | Filtrar por profesión                     |
+
+**Response (200 OK):**
+
+```json
+{
+  "query": "necesito un plomero urgente para reparar fuga de agua",
+  "processed_query": "necesito plomero urgente reparar fuga agua",
+  "strategy_used": "hybrid",
+  "total_results": 3,
+  
+  "recommendations": [
+    {
+      "id": 1,
+      "user": {
+        "id": 45,
+        "email": "juan@example.com",
+        "first_name": "Juan",
+        "last_name": "Pérez",
+        "role": "WORKER",
+        "avatar": null
+      },
+      "profession": "PLUMBER",
+      "bio": "Plomero con 8 años de experiencia en reparaciones urgentes...",
+      "years_experience": 8,
+      "hourly_rate": "350.00",
+      "is_verified": true,
+      "average_rating": 4.7,
+      "latitude": -12.0789,
+      "longitude": -77.0234,
+    
+      // Campos de recomendación (planos para frontend)
+      "recommendation_score": 0.8534,
+      "matched_keywords": ["plomero", "reparaciones", "urgente", "fuga"],
+      "explanation": "85% relevante - coincide con: plomero, reparaciones, urgente - a 4.7km",
+    
+      // Detalles completos (opcional, para análisis avanzado)
+      "recommendation_details": {
+        "semantic_similarity": 0.8534,
+        "relevance_percentage": 85.34,
+        "distance_km": 4.72,
+        "distance_factor": 0.9156,
+        "normalized_score": 0.7821,
+        "matched_terms_count": 4
+      }
+    }
+  ],
+  
+  "performance_ms": 52.3,
+  "cache_hit": true,
+  "log_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Errores Comunes:**
+
+**400 Bad Request - Query muy corto:**
+
+```json
+{
+  "query": ["La búsqueda debe tener al menos 3 caracteres"]
+}
+```
+
+**400 Bad Request - Idioma no soportado:**
+
+```json
+{
+  "language": ["Inglés no soportado actualmente. Use \"es\" para español. Funcionalidad en desarrollo."]
+}
+```
+
+**503 Service Unavailable - Modelo no entrenado:**
+
+```json
+{
+  "error": "Recommendation engine error",
+  "detail": "Modelo no entrenado",
+  "hint": "El modelo ML puede no estar entrenado. Ejecuta: python manage.py train_recommendation_model"
+}
+```
+
+---
+
+### 4.2 Health Check del Sistema IA
+
+```http
+GET /api/users/workers/recommendation-health/
+```
+
+**Público**
+
+**Response (200 OK):**
+
+```json
+{
+  "status": "ready",
+  "model_trained": true,
+  "corpus_size": 156,
+  "vocabulary_size": 487,
+  "model_last_trained": "2026-01-28T08:30:15Z",
+  "cache_status": "connected",
+  "avg_response_time_ms": 52.3,
+  "recent_errors_count": 0,
+  "recommendations": [],
+  "checked_at": "2026-01-28T14:22:10Z"
+}
+```
+
+**Estados Posibles:**
+
+- `"ready"` - Sistema listo para uso (200)
+- `"not_trained"` - Modelo sin entrenar (200)
+- `"degraded"` - Funcional con warnings (200)
+- `"unhealthy"` - Sistema con errores críticos (503)
+
+---
+
+### 4.3 Analytics (Solo Admins)
+
+```http
+GET /api/users/workers/recommendation-analytics/?days=30
+```
+
+**Headers:** `Authorization: Bearer {token}` (IsAdminUser)
+
+**Query Parameters:**
+
+- `days` (int): Rango de días para análisis (default: 30)
+
+**Response (200 OK):**
+
+```json
+{
+  "total_queries": 1523,
+  "unique_users": 87,
+  "avg_response_time_ms": 52.3,
+  "cache_hit_rate": 0.78,
+  "avg_results_per_query": 8.4,
+  "avg_ctr": 0.42,
+  "avg_conversion_rate": 0.18,
+  "avg_mrr": 0.76,
+  "top_query_terms": [
+    {"term": "plomero", "count": 245},
+    {"term": "electricista", "count": 189}
+  ],
+  "ab_test_results": {...},
+  "corpus_health": {...},
+  "date_range": {
+    "from": "2025-12-29",
+    "to": "2026-01-28"
+  }
+}
+```
+
+---
+
+## 5. Órdenes de Servicio
+
+### 5.1 Crear Orden
+
+```http
+POST /api/orders/
+```
+
+**Headers:** `Authorization: Bearer {token}` (role=CLIENT)
+
+**Request Body:**
+
+```json
+{
+  "worker": 5,
+  "description": "Reparación de fuga en baño principal"
+}
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "id": 42,
+  "client": 1,
+  "client_email": "cliente@example.com",
+  "worker": 5,
+  "worker_name": "María González",
+  "worker_hourly_rate": "350.00",
+  "description": "Reparación de fuga en baño principal",
+  "status": "PENDING",
+  "status_display": "Pending",
+  "agreed_price": null,
+  "created_at": "2026-01-28T10:30:00Z",
+  "updated_at": "2026-01-28T10:30:00Z"
+}
+```
+
+**Status Values:**
+
+- `PENDING` - Pendiente (creada)
+- `ACCEPTED` - Aceptada por trabajador
+- `IN_ESCROW` - En depósito de garantía
+- `COMPLETED` - Completada
+- `CANCELLED` - Cancelada
+
+---
+
+### 5.2 Listar Órdenes
+
+```http
+GET /api/orders/list/
+```
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Query Parameters:**
+
+- `status` (string): Filtrar por estado
+- `role` (string): "client" | "worker" (auto-detectado por el token)
+- `page` (int)
+- `page_size` (int)
+
+**Response:** Paginado similar a trabajadores
+
+---
+
+### 5.3 Detalle de Orden
+
+```http
+GET /api/orders/{id}/
+```
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:** Objeto completo de orden
+
+---
+
+### 5.4 Actualizar Estado
+
+```http
+PATCH /api/orders/{id}/status/
+```
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request Body:**
+
+```json
+{
+  "status": "IN_PROGRESS"
+}
+```
+
+**Permisos:**
+
+- Cliente: `PENDING` → `CANCELLED`
+- Trabajador: `PENDING` → `ACCEPTED`, `ACCEPTED` → `IN_PROGRESS`, `IN_PROGRESS` → `COMPLETED`
+
+---
+
+### 5.5 Resumen de Precio
+
+```http
+GET /api/orders/{id}/price-summary/
+```
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response (200 OK):**
+
+```json
+{
+  "order_id": 42,
+  "hourly_rate": "350.00",
+  "total_hours": 5.5,
+  "subtotal": "1925.00",
+  "platform_fee": "96.25",
+  "total": "2021.25",
+  "currency": "PEN"
+}
+```
+
+---
+
+## 6. Registro de Horas
+
+### 6.1 Listar Horas de una Orden
+
+```http
+GET /api/orders/{order_id}/work-hours/
+```
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response (200 OK):**
+
+```json
+[
+  {
+    "id": 1,
+    "order": 42,
+    "date": "2026-01-28",
+    "hours_worked": 3.5,
+    "description": "Reparación de tubería principal",
+    "status": "PENDING",
+    "created_at": "2026-01-28T15:30:00Z"
+  }
+]
+```
+
+**Status Values:** `"PENDING"`, `"APPROVED"`, `"REJECTED"`
+
+---
+
+### 6.2 Registrar Horas
+
+```http
+POST /api/orders/{order_id}/work-hours/
+```
+
+**Headers:** `Authorization: Bearer {token}` (role=WORKER)
+
+**Request Body:**
+
+```json
+{
+  "date": "2026-01-28",
+  "hours": 3.5,
+  "description": "Reparación de tubería principal"
+}
+```
+
+---
+
+### 6.3 Aprobar Horas
+
+```http
+POST /api/orders/{order_id}/work-hours/{id}/approve/
+```
+
+**Headers:** `Authorization: Bearer {token}` (role=CLIENT, dueño de la orden)
+
+**Response (200 OK):**
+
+```json
+{
+  "id": 1,
+  "status": "APPROVED",
+  ...
+}
+```
+
+---
+
+## 7. Mensajería
+
+### 7.1 Listar Mensajes de Orden
+
+```http
+GET /api/orders/{order_id}/messages/
+```
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response (200 OK):**
+
+```json
+[
+  {
+    "id": 1,
+    "order": 42,
+    "sender": {
+      "id": 1,
+      "first_name": "Juan",
+      "last_name": "Pérez"
+    },
+    "content": "Hola, ¿cuándo puedes venir?",
+    "timestamp": "2026-01-28T10:35:00Z",
+    "is_read": true
+  }
+]
+```
+
+---
+
+### 7.2 Enviar Mensaje
+
+```http
+POST /api/orders/{order_id}/messages/
+```
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Request Body:**
+
+```json
+{
+  "content": "Puedo ir mañana a las 10am"
+}
+```
+
+**Nota:** Para chat en tiempo real, usa WebSockets (ver sección 9)
+
+---
+
+## 8. Reseñas
+
+### 8.1 Crear Reseña
+
+```http
+POST /api/orders/{order_id}/review/
+```
+
+**Headers:** `Authorization: Bearer {token}` (role=CLIENT)
+
+**Request Body:**
+
+```json
+{
+  "rating": 5,
+  "comment": "Excelente trabajo, muy profesional y puntual"
+}
+```
+
+**Validaciones:**
+
+- Rating: 1-5
+- Solo se puede crear una reseña por orden
+- La orden debe estar en estado `COMPLETED`
+
+**Response (201 Created):**
+
+```json
+{
+  "id": 10,
+  "order": 42,
+  "client": {...},
+  "worker": {...},
+  "rating": 5,
+  "comment": "Excelente trabajo, muy profesional y puntual",
+  "created_at": "2026-01-28T18:00:00Z"
+}
+```
+
+---
+
+### 8.2 Listar Reseñas de Trabajador
+
+```http
+GET /api/orders/workers/{worker_id}/reviews/
+```
+
+**Público**
+
+**Query Parameters:**
+
+- `page` (int)
+- `page_size` (int)
+
+**Response (200 OK):**
+
+```json
+{
+  "count": 23,
+  "average_rating": 4.7,
+  "results": [
+    {
+      "id": 10,
+      "client": {
+        "first_name": "María",
+        "last_name": "L."
+      },
+      "rating": 5,
+      "comment": "Excelente trabajo...",
+      "created_at": "2026-01-28T18:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### 8.3 Obtener Reseña de Orden
+
+```http
+GET /api/orders/{order_id}/review/
+```
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response (200 OK):** Objeto de reseña o `404` si no existe
+
+---
+
+### 8.4 Listar Todas las Reseñas (Público)
+
+```http
+GET /api/reviews/
+```
+
+**Público**
+
+**Query Parameters:**
+
+- `worker` (int): Filtrar por worker_id
+- `min_rating` (int): Rating mínimo
+- `page`, `page_size`
+
+---
+
+## 9. WebSockets
+
+Para chat en tiempo real entre cliente y trabajador en una orden.
+
+### 9.1 Conectar a Chat de Orden
+
+```
+ws://localhost:8000/ws/chat/{order_id}/
+```
+
+**Autenticación:** Token JWT en query parameter
+
+```
+ws://localhost:8000/ws/chat/42/?token=eyJhbGci...
+```
+
+**Ejemplo (JavaScript):**
+
+```javascript
+const orderId = 42;
+const token = localStorage.getItem('access_token');
+const ws = new WebSocket(
+  `ws://localhost:8000/ws/chat/${orderId}/?token=${token}`
+);
+
+ws.onopen = () => {
+  console.log('Conectado al chat');
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Mensaje recibido:', data);
+  // { type: 'chat_message', message: {...} }
+};
+
+// Enviar mensaje
+ws.send(JSON.stringify({
+  type: 'chat_message',
+  message: 'Hola, ¿cómo estás?'
+}));
+```
+
+**Mensajes Recibidos:**
+
+```json
+{
+  "type": "chat_message",
+  "message": {
+    "id": 15,
+    "sender": {
+      "id": 1,
+      "first_name": "Juan",
+      "last_name": "Pérez"
+    },
+    "content": "Hola, ¿cómo estás?",
+    "timestamp": "2026-01-28T10:35:00Z"
+  }
+}
+```
+
+**Errores de Conexión:**
+
+- Token inválido → Cierra conexión
+- Usuario no es parte de la orden → Cierra conexión
+- Orden no existe → Cierra conexión
+
+---
+
+## 10. Códigos de Error
+
+| Código | Significado           | Solución                             |
+| ------- | --------------------- | ------------------------------------- |
+| 400     | Bad Request           | Validar request body/params           |
+| 401     | Unauthorized          | Token inválido/expirado, hacer login |
+| 403     | Forbidden             | Sin permisos para este recurso        |
+| 404     | Not Found             | Recurso no existe                     |
+| 429     | Too Many Requests     | Rate limit excedido, esperar          |
+| 500     | Internal Server Error | Error del servidor, reportar          |
+| 503     | Service Unavailable   | Servicio temporalmente no disponible  |
+
+**Formato de Error:**
+
+```json
+{
+  "detail": "Descripción del error",
+  "field_name": ["Error específico del campo"]
+}
+```
+
+---
+
+## 11. Rate Limiting
+
+| Endpoint                               | Límite      | Periodo  |
+| -------------------------------------- | ------------ | -------- |
+| `/auth/login/`                       | 5 requests   | 1 minuto |
+| `/auth/register/`                    | 3 requests   | 1 minuto |
+| `/workers/recommend/`                | 60 requests  | 1 minuto |
+| `/workers/recommendation-analytics/` | 10 requests  | 1 minuto |
+| `/workers/recommendation-health/`    | 30 requests  | 1 minuto |
+| Otros endpoints                        | 100 requests | 1 minuto |
+
+**Error 429:**
+
+```json
+{
+  "detail": "Request was throttled. Expected available in 45 seconds."
+}
+```
+
+---
+
+## 12. Paginación
+
+Endpoints que retornan listas usan paginación estándar:
+
+**Response:**
+
+```json
+{
+  "count": 150,
+  "next": "http://api.../endpoint/?page=2",
+  "previous": null,
+  "results": [...]
+}
+```
+
+**Query Parameters:**
+
+- `page` (int): Número de página (default: 1)
+- `page_size` (int): Resultados por página (default: 10, max: 100)
+
+---
+
+## 13. Notas Importantes
+
+### Idioma en Sistema de Recomendación
+
+- **Solo español funcional actualmente**
+- Parámetro `language` acepta `"es"` y `"en"`, pero inglés retorna error 400
+- Razón: No hay corpus bilingüe, requiere traducción o biografías en ambos idiomas
+- Ver: `docs/TECHNICAL_DECISIONS.md` TD-001
+
+### Sinónimos NO Implementados
+
+- El sistema NO expande sinónimos automáticamente
+- "plomero" NO busca "fontanero", "gasfiter"
+- Funcionalidad planificada para el futuro
+
+### Campos Planos vs Detallados
+
+- Endpoint de recomendación retorna ambos formatos
+- **Usar campos planos** para UI simple: `recommendation_score`, `matched_keywords`, `explanation`
+- **Usar `recommendation_details`** para análisis avanzado
+
+---
+
+## 14. Ejemplos de Integración
+
+### React/TypeScript
+
+```typescript
+// services/api.ts
+const API_BASE = 'http://localhost:8000';
+
+interface LoginResponse {
+  access: string;
+  refresh: string;
+}
+
+export async function login(email: string, password: string): Promise<LoginResponse> {
+  const response = await fetch(`${API_BASE}/api/auth/login/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  
+  if (!response.ok) {
+    throw new Error('Login failed');
+  }
+  
+  return response.json();
+}
+
+export async function searchWorkers(query: string, lat: number, lon: number) {
+  const token = localStorage.getItem('access_token');
+  
+  const response = await fetch(`${API_BASE}/api/users/workers/recommend/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` })
+    },
+    body: JSON.stringify({
+      query,
+      language: 'es',
+      latitude: lat,
+      longitude: lon,
+      max_distance_km: 20,
+      top_n: 10
+    })
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Search failed');
+  }
+  
+  return response.json();
+}
+```
+
+---
+
+## 15. Contacto y Soporte
+
+**Repositorio:** https://github.com/anuarthr/FindMyWorkerBackend
+**Branch principal:** `master`
+**Documentación técnica:** `docs/`
+
+**Para preguntas sobre:**
+
+- Arquitectura ML → `docs/RECOMMENDATION_ARCHITECTURE.md`
+- Decisiones técnicas → `docs/TECHNICAL_DECISIONS.md`
+- Esta API → `docs/FRONTEND_API_SPEC.md` (este archivo)
