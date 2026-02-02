@@ -7,6 +7,18 @@ Este módulo contiene la lógica de negocio relacionada con:
 - Estrategias de matching (A/B/C testing)
 """
 
-from .recommendation_engine import RecommendationEngine
+"""
+Business logic services for users app.
 
-__all__ = ['RecommendationEngine']
+Services handle complex business logic separate from views:
+    - RecommendationEngine: ML-powered worker search
+    - RecommendationPresenter: Response formatting
+"""
+
+from .recommendation_engine import RecommendationEngine
+from .recommendation_presenter import RecommendationPresenter
+
+__all__ = [
+    'RecommendationEngine',
+    'RecommendationPresenter',
+]

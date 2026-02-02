@@ -177,14 +177,34 @@ class WorkerRecommendationView(APIView):
                 worker = result['worker']
                 worker_ids.append(str(worker.id))
                 
-                # Agregar campos de recomendación al worker
-                worker.score = result['score']
-                worker.relevance_percentage = result['relevance_percentage']
-                worker.explanation = result['explanation']
+                # Guardar datos completos para recommendation_details
+                worker._recommendation_data = {
+                    'score': result['score'],
+                    'relevance_percentage': result['relevance_percentage'],
+                    'matched_keywords': result['explanation'].get('matched_keywords', []),
+                    'distance_km': result['explanation'].get('distance_km'),
+                    'distance_factor': result['explanation'].get('distance_factor'),
+                    'normalized_score': result.get('normalized_score', result['score']),
+                }
                 
-                # Agregar distancia si está disponible
-                if 'distance_km' in result['explanation']:
-                    worker.distance_km = result['explanation']['distance_km']
+                # Campos planos para compatibilidad con frontend
+                worker.recommendation_score = result['score']
+                worker.matched_keywords = result['explanation'].get('matched_keywords', [])
+                
+                # Generar string de explicación
+                relevance_pct = result['relevance_percentage']
+                keywords = result['explanation'].get('matched_keywords', [])
+                distance = result['explanation'].get('distance_km')
+                
+                explanation_parts = []
+                if relevance_pct > 0:
+                    explanation_parts.append(f"{relevance_pct:.0f}% relevante")
+                if keywords:
+                    explanation_parts.append(f"coincide con: {', '.join(keywords[:3])}")
+                if distance is not None:
+                    explanation_parts.append(f"a {distance:.1f}km")
+                
+                worker.explanation = " - ".join(explanation_parts) if explanation_parts else "Recomendado por filtros"
                 
                 recommendations_data.append(worker)
             
@@ -450,7 +470,7 @@ class RecommendationHealthView(APIView):
     def get(self, request):
         health_data = {
             'checked_at': timezone.now(),
-            'status': 'healthy',
+            'status': 'ready',
             'recommendations': []
         }
         
@@ -470,7 +490,7 @@ class RecommendationHealthView(APIView):
                 if model_meta and 'trained_at' in model_meta:
                     health_data['model_last_trained'] = model_meta['trained_at']
             else:
-                health_data['status'] = 'degraded'
+                health_data['status'] = 'not_trained'
                 health_data['recommendations'].append(
                     'Modelo TF-IDF no entrenado. Ejecuta: python manage.py train_recommendation_model'
                 )
