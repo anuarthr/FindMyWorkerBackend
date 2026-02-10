@@ -410,3 +410,132 @@ class RecommendationHealthSerializer(serializers.Serializer):
     
     # Timestamp
     checked_at = serializers.DateTimeField(help_text="Timestamp del health check")
+
+
+# ============================================================================
+# SERIALIZERS DE PORTFOLIO (HU4)
+# ============================================================================
+
+from .models import PortfolioItem
+
+
+class PortfolioItemSerializer(serializers.ModelSerializer):
+    """
+    Serializador de lectura para items de portfolio.
+    
+    Incluye información completa del trabajador y URLs absolutas de imágenes.
+    Usado para operaciones GET (list/retrieve).
+    """
+    
+    worker_id = serializers.IntegerField(source="worker.id", read_only=True)
+    worker_user_id = serializers.IntegerField(source="worker.user.id", read_only=True)
+    worker_email = serializers.EmailField(source="worker.user.email", read_only=True)
+    image_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PortfolioItem
+        fields = [
+            "id",
+            "worker_id",
+            "worker_user_id",
+            "worker_email",
+            "title",
+            "description",
+            "image",
+            "image_url",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "worker_id",
+            "worker_user_id",
+            "worker_email",
+            "created_at",
+            "image_url",
+        ]
+    
+    def get_image_url(self, obj):
+        """Retorna URL absoluta de la imagen (maneja S3 y storage local)."""
+        if obj.image and hasattr(obj.image, "url"):
+            url = obj.image.url
+            request = self.context.get("request")
+            
+            if request is not None and not url.startswith("http"):
+                return request.build_absolute_uri(url)
+            
+            return url
+        return None
+
+
+class PortfolioItemCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializador de escritura para items de portfolio.
+    
+    Maneja creación y actualizaciones con asignación automática de worker.
+    Usado para operaciones POST/PATCH/PUT.
+    """
+    
+    class Meta:
+        model = PortfolioItem
+        fields = ["id", "title", "description", "image"]
+        read_only_fields = ["id"]
+    
+    def validate_image(self, image):
+        """Los validadores del modelo ya aplican."""
+        return image
+    
+    def validate_title(self, title):
+        """
+        Valida que el título no esté vacío o solo sea espacios.
+        
+        Aplica strip() para normalizar el título y rechaza
+        cadenas vacías o con solo espacios en blanco.
+        """
+        if not title or not title.strip():
+            raise serializers.ValidationError(
+                _("El título no puede estar vacío o contener solo espacios.")
+            )
+        return title.strip()
+    
+    def create(self, validated_data):
+        """Crea item de portfolio para el trabajador autenticado."""
+        request = self.context.get("request")
+        if not request or not request.user:
+            raise serializers.ValidationError(
+                {"detail": _("Usuario no autenticado.")}
+            )
+        
+        user = request.user
+        worker_profile = getattr(user, "worker_profile", None)
+        
+        if worker_profile is None:
+            raise serializers.ValidationError(
+                {"detail": _("El usuario no tiene perfil de trabajador.")}
+            )
+        
+        return PortfolioItem.objects.create(
+            worker=worker_profile,
+            **validated_data
+        )
+
+
+class WorkerProfileWithPortfolioSerializer(WorkerProfileSerializer):
+    """
+    Serializador extendido de perfil de trabajador incluyendo portfolio.
+    
+    Usado para vistas detalladas donde el portfolio debe mostrarse
+    junto con la información básica del trabajador.
+    """
+    
+    portfolio_items = PortfolioItemSerializer(many=True, read_only=True)
+    portfolio_count = serializers.SerializerMethodField()
+    
+    class Meta(WorkerProfileSerializer.Meta):
+        fields = WorkerProfileSerializer.Meta.fields + [
+            "portfolio_items",
+            "portfolio_count",
+        ]
+    
+    def get_portfolio_count(self, obj):
+        """Retorna cantidad total de items de portfolio."""
+        return obj.portfolio_items.count()

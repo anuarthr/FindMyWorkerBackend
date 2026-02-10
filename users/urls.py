@@ -6,6 +6,11 @@ from .views import (
     RecommendationAnalyticsView,
     RecommendationHealthView,
 )
+from .views.portfolio_views import (
+    MyPortfolioListCreateView,
+    WorkerPortfolioListView,
+    PortfolioItemDetailView,
+)
 
 urlpatterns = [
     path('me/', ManageUserView.as_view(), name='me'),
@@ -33,5 +38,30 @@ urlpatterns = [
         'workers/recommendation-health/',
         RecommendationHealthView.as_view(),
         name='recommendation-health'
+    ),
+    
+    # ============================================================================
+    # ENDPOINTS DE PORTFOLIO (HU4)
+    # ============================================================================
+    
+    # Manage authenticated worker's portfolio
+    path(
+        'workers/portfolio/',
+        MyPortfolioListCreateView.as_view(),
+        name='my-portfolio'
+    ),
+    
+    # View specific worker's public portfolio
+    path(
+        'workers/<int:worker_id>/portfolio/',
+        WorkerPortfolioListView.as_view(),
+        name='worker-portfolio'
+    ),
+    
+    # CRUD operations on specific portfolio item
+    path(
+        'workers/portfolio/<int:pk>/',
+        PortfolioItemDetailView.as_view(),
+        name='portfolio-item-detail'
     ),
 ]

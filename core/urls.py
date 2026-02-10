@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework.routers import DefaultRouter
 from users.views import RegisterView, ManageWorkerProfileView, WorkerAdminViewSet, CustomTokenObtainPairView
@@ -23,3 +25,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('', include(admin_router.urls)),
 ]
+
+# Serve media files in development (local storage only)
+if settings.DEBUG and not settings.USE_S3:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

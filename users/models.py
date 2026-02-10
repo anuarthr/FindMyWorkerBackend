@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from .managers import CustomUserManager
 from django.contrib.gis.db import models as geomodels
 from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import ValidationError
 import uuid
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -195,4 +196,170 @@ class RecommendationLog(models.Model):
         if self.click_position is not None:
             return 1.0 / (self.click_position + 1)
         return 0.0
+
+
+# ============================================================================
+# MÓDULO DE PORTFOLIO (HU4)
+# ============================================================================
+
+from .validators import portfolio_image_validators
+from .constants import (
+    MAX_IMAGE_WIDTH,
+    IMAGE_QUALITY_JPEG,
+    IMAGE_QUALITY_PNG_OPTIMIZE,
+    IMAGE_QUALITY_WEBP,
+    DEFAULT_IMAGE_FORMAT,
+    DEFAULT_IMAGE_EXTENSION,
+)
+from io import BytesIO
+from PIL import Image as PILImage
+from django.core.files.base import ContentFile
+
+
+def portfolio_image_upload_to(instance, filename):
+    """
+    Genera la ruta de subida para imágenes de portfolio.
+    
+    Organiza imágenes por ID de trabajador para mantener estructura limpia en S3.
+    Patrón: portfolio/worker_{id}/{filename}
+    """
+    return f"portfolio/worker_{instance.worker.id}/{filename}"
+
+
+def compress_image(image, format_hint=None):
+    """
+    Comprime y redimensiona imagen usando Pillow.
+    
+    Aplica compresión inteligente:
+    - Redimensiona si width > MAX_IMAGE_WIDTH (mantiene aspect ratio)
+    - Optimiza calidad según formato
+    - Convierte a formatos web-friendly
+    
+    Raises:
+        ValidationError: Si el archivo no puede ser procesado por Pillow
+    """
+    try:
+        img = PILImage.open(image)
+        img_format = format_hint or img.format or DEFAULT_IMAGE_FORMAT
+    except (IOError, OSError) as e:
+        raise ValidationError(
+            _("El archivo no es una imagen válida o está corrupto.")
+        )
+    
+    # Convert RGBA to RGB for JPEG compatibility
+    if img.mode in ("RGBA", "LA", "P") and img_format.upper() in ["JPEG", "JPG"]:
+        background = PILImage.new("RGB", img.size, (255, 255, 255))
+        if img.mode == "P":
+            img = img.convert("RGBA")
+        background.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+        img = background
+    
+    # Resize if needed (maintains aspect ratio)
+    if img.width > MAX_IMAGE_WIDTH:
+        ratio = MAX_IMAGE_WIDTH / float(img.width)
+        new_height = int(float(img.height) * ratio)
+        img = img.resize((MAX_IMAGE_WIDTH, new_height), PILImage.LANCZOS)
+    
+    buffer = BytesIO()
+    if img_format.upper() in ["JPEG", "JPG"]:
+        img.save(buffer, format="JPEG", optimize=True, quality=IMAGE_QUALITY_JPEG)
+        ext = "jpg"
+    elif img_format.upper() == "PNG":
+        img.save(buffer, format="PNG", optimize=IMAGE_QUALITY_PNG_OPTIMIZE)
+        ext = "png"
+    elif img_format.upper() == "WEBP":
+        img.save(buffer, format="WEBP", quality=IMAGE_QUALITY_WEBP)
+        ext = "webp"
+    else:
+        img.save(buffer, format="JPEG", optimize=True, quality=IMAGE_QUALITY_JPEG)
+        ext = DEFAULT_IMAGE_EXTENSION
+    
+    buffer.seek(0)
+    return ContentFile(buffer.read()), ext
+
+
+class PortfolioItem(models.Model):
+    """
+    Item de portfolio para perfiles de trabajadores.
+    
+    Permite a los trabajadores mostrar su trabajo con fotos antes/después,
+    descripciones de proyectos y evidencia visual de su experiencia.
+    
+    Reglas de negocio:
+    - Solo rol WORKER puede crear items de portfolio
+    - Las imágenes se comprimen automáticamente al subir
+    - Máximo 2MB por imagen (validado antes de comprimir)
+    - Lectura pública, escritura solo para dueño
+    
+    Relacionado con HU4: Portafolio Visual de Evidencias
+    """
+    
+    worker = models.ForeignKey(
+        WorkerProfile,
+        on_delete=models.CASCADE,
+        related_name="portfolio_items",
+        verbose_name=_("Trabajador"),
+        help_text=_("Trabajador dueño de este item de portfolio")
+    )
+    title = models.CharField(
+        _("Título"),
+        max_length=255,
+        help_text=_("Título breve describiendo el trabajo (ej: 'Remodelación de Cocina')")
+    )
+    description = models.TextField(
+        _("Descripción"),
+        blank=True,
+        help_text=_("Descripción detallada del proyecto y técnicas utilizadas")
+    )
+    image = models.ImageField(
+        _("Imagen"),
+        upload_to=portfolio_image_upload_to,
+        validators=portfolio_image_validators,
+        help_text=_("Foto antes/después o muestra del proyecto (máx 2MB)")
+    )
+    created_at = models.DateTimeField(
+        _("Fecha de Creación"),
+        auto_now_add=True
+    )
+    
+    class Meta:
+        verbose_name = _("Item de Portfolio")
+        verbose_name_plural = _("Items de Portfolio")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["worker", "-created_at"], name="portfolio_worker_created_idx"),
+        ]
+    
+    def save(self, *args, **kwargs):
+        """
+        Comprime la imagen antes de guardar.
+        
+        Aplica compresión solo si la imagen es nueva o cambió,
+        reduciendo costos de almacenamiento y mejorando tiempos de carga.
+        """
+        if self.image and hasattr(self.image, "file"):
+            try:
+                compressed_file, ext = compress_image(self.image)
+                
+                original_name = self.image.name.rsplit(".", 1)[0] if "." in self.image.name else self.image.name
+                file_name = f"{original_name}.{ext}"
+                
+                self.image = compressed_file
+                self.image.name = file_name
+            except ValidationError:
+                # Re-propagar ValidationError (ej: imagen corrupta)
+                raise
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Fallo compresión de imagen para PortfolioItem: {e}")
+                # Propagar como ValidationError para consistencia
+                raise ValidationError(
+                    _("Error al procesar la imagen. Verifica que sea un archivo válido.")
+                )
+        
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.worker.user.email} - {self.title}"
 
