@@ -4,7 +4,7 @@ Esta es la documentación completa de la API REST para su uso en el frontend. In
 
 **Base URL:** `http://localhost:8000` (desarrollo) | `https://api.findmyworker.com` (producción)
 
-**Última actualización:** 2026-01-28
+**Última actualización:** 2026-02-13
 
 ---
 
@@ -13,14 +13,19 @@ Esta es la documentación completa de la API REST para su uso en el frontend. In
 1. [Autenticación](#1-autenticación)
 2. [Usuarios](#2-usuarios)
 3. [Trabajadores (Búsqueda Pública)](#3-trabajadores-búsqueda-pública)
-4. [Sistema de Recomendación IA](#4-sistema-de-recomendación-ia)
-5. [Órdenes de Servicio](#5-órdenes-de-servicio)
-6. [Registro de Horas](#6-registro-de-horas)
-7. [Mensajería](#7-mensajería)
-8. [Reseñas](#8-reseñas)
-9. [WebSockets (Chat en Tiempo Real)](#9-websockets)
-10. [Códigos de Error](#10-códigos-de-error)
-11. [Rate Limiting](#11-rate-limiting)
+4. [Portafolio Visual](#4-portafolio-visual)
+5. [Sistema de Recomendación IA](#5-sistema-de-recomendación-ia)
+6. [Órdenes de Servicio](#6-órdenes-de-servicio)
+7. [Registro de Horas](#7-registro-de-horas)
+8. [Mensajería](#8-mensajería)
+9. [Reseñas](#9-reseñas)
+10. [WebSockets (Chat en Tiempo Real)](#10-websockets)
+11. [Códigos de Error](#11-códigos-de-error)
+12. [Rate Limiting](#12-rate-limiting)
+13. [Paginación](#13-paginación)
+14. [Notas Importantes](#14-notas-importantes)
+15. [Ejemplos de Integración](#15-ejemplos-de-integración)
+16. [Contacto y Soporte](#16-contacto-y-soporte)
 
 ---
 
@@ -292,7 +297,282 @@ GET /api/workers/{id}/
 
 ---
 
-## 4. Sistema de Recomendación IA
+## 4. Portafolio Visual
+
+Sistema de gestión de portafolio fotográfico para trabajadores. Permite subir imágenes de proyectos con compresión automática, validación de formatos y almacenamiento optimizado.
+
+### 4.1 Crear Item de Portafolio
+
+```http
+POST /api/users/workers/portfolio/
+```
+
+**Requiere autenticación:** ✅ (Solo rol WORKER)
+
+**Content-Type:** `multipart/form-data`
+
+**Request Body (Form Data):**
+
+| Campo           | Tipo   | Requerido | Descripción                                |
+| --------------- | ------ | --------- | ------------------------------------------- |
+| `title`       | string | ✅        | Título del proyecto (max 255 caracteres)   |
+| `description` | string | ❌        | Descripción detallada del proyecto         |
+| `image`       | file   | ✅        | Imagen del proyecto (max 5MB, JPG/PNG/WEBP) |
+
+**Ejemplo con JavaScript (Fetch):**
+
+```javascript
+const formData = new FormData();
+formData.append('title', 'Remodelación de Cocina');
+formData.append('description', 'Proyecto completo de remodelación con instalación de muebles y acabados');
+formData.append('image', fileInput.files[0]);
+
+fetch('http://localhost:8000/api/users/workers/portfolio/', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${accessToken}`
+  },
+  body: formData
+})
+.then(res => res.json())
+.then(data => console.log(data));
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "id": 1,
+  "title": "Remodelación de Cocina",
+  "description": "Proyecto completo de remodelación con instalación de muebles y acabados",
+  "image": "/media/portfolio/worker_12/remodelacion_cocina.jpg",
+  "image_url": "http://localhost:8000/media/portfolio/worker_12/remodelacion_cocina.jpg",
+  "created_at": "2026-02-10T15:30:00Z"
+}
+```
+
+**Validaciones:**
+
+- ✅ Título no vacío (sin solo espacios)
+- ✅ Imagen máximo 5MB
+- ✅ Formatos permitidos: JPG, PNG, WEBP
+- ✅ Compresión automática si width > 1600px
+- ✅ Solo rol WORKER puede crear
+
+**Errores comunes:**
+
+```json
+// 400 - Título vacío
+{
+  "title": ["El título no puede estar vacío o contener solo espacios."]
+}
+
+// 400 - Imagen muy grande
+{
+  "image": ["El archivo no debe exceder 5.0 MB."]
+}
+
+// 400 - Formato no permitido
+{
+  "image": ["Extensión de archivo no permitida: .gif. Use: .jpg, .png o .webp"]
+}
+
+// 403 - Usuario no es WORKER
+{
+  "detail": "No tienes permiso para realizar esta acción."
+}
+```
+
+---
+
+### 4.2 Listar Portfolio Propio
+
+```http
+GET /api/users/workers/portfolio/
+```
+
+**Requiere autenticación:** ✅ (Solo rol WORKER)
+
+**Response (200 OK):**
+
+```json
+[
+  {
+    "id": 1,
+    "title": "Remodelación de Cocina",
+    "description": "Proyecto completo de remodelación...",
+    "image": "/media/portfolio/worker_12/remodelacion_cocina.jpg",
+    "image_url": "http://localhost:8000/media/portfolio/worker_12/remodelacion_cocina.jpg",
+    "created_at": "2026-02-10T15:30:00Z"
+  },
+  {
+    "id": 2,
+    "title": "Instalación Eléctrica Residencial",
+    "description": "Cableado completo para casa de 3 pisos...",
+    "image_url": "http://localhost:8000/media/portfolio/worker_12/instalacion_electrica.jpg",
+    "created_at": "2026-02-08T10:15:00Z"
+  }
+]
+```
+
+**Ordenamiento:** Por fecha de creación (más reciente primero)
+
+---
+
+### 4.3 Ver Portfolio Público de Trabajador
+
+```http
+GET /api/users/workers/{worker_id}/portfolio/
+```
+
+**Público:** ✅ (No requiere autenticación)
+
+**Path Parameters:**
+
+| Param         | Tipo    | Descripción         |
+| ------------- | ------- | -------------------- |
+| `worker_id` | integer | ID del WorkerProfile |
+
+**Response (200 OK):** Mismo formato que 4.2
+
+**Ejemplo:**
+
+```javascript
+// Ver portfolio del trabajador con ID 12
+fetch('http://localhost:8000/api/users/workers/12/portfolio/')
+  .then(res => res.json())
+  .then(portfolio => {
+    portfolio.forEach(item => {
+      console.log(item.title, item.image_url);
+    });
+  });
+```
+
+---
+
+### 4.4 Actualizar Item de Portafolio
+
+```http
+PATCH /api/users/workers/portfolio/{id}/
+```
+
+**Requiere autenticación:** ✅ (Solo dueño WORKER)
+
+**Content-Type:** `multipart/form-data`
+
+**Request Body (Form Data):** Todos los campos son opcionales
+
+| Campo           | Tipo   | Descripción                         |
+| --------------- | ------ | ------------------------------------ |
+| `title`       | string | Nuevo título                        |
+| `description` | string | Nueva descripción                   |
+| `image`       | file   | Nueva imagen (reemplaza la anterior) |
+
+**Response (200 OK):**
+
+```json
+{
+  "id": 1,
+  "title": "Remodelación Completa de Cocina Moderna",
+  "description": "Proyecto completo de remodelación...",
+  "image_url": "http://localhost:8000/media/portfolio/worker_12/remodelacion_cocina.jpg",
+  "created_at": "2026-02-10T15:30:00Z"
+}
+```
+
+**Errores:**
+
+```json
+// 403 - No es el dueño
+{
+  "detail": "No tienes permiso para realizar esta acción."
+}
+
+// 404 - Item no existe
+{
+  "detail": "No encontrado."
+}
+```
+
+---
+
+### 4.5 Eliminar Item de Portafolio
+
+```http
+DELETE /api/users/workers/portfolio/{id}/
+```
+
+**Requiere autenticación:** ✅ (Solo dueño WORKER)
+
+**Response (204 No Content):** Sin body
+
+**Ejemplo:**
+
+```javascript
+fetch('http://localhost:8000/api/users/workers/portfolio/1/', {
+  method: 'DELETE',
+  headers: {
+    'Authorization': `Bearer ${accessToken}`
+  }
+})
+.then(res => {
+  if (res.status === 204) {
+    console.log('Item eliminado exitosamente');
+  }
+});
+```
+
+---
+
+### 4.6 Notas de Implementación
+
+**Compresión Automática:**
+
+- Imágenes >1600px de ancho se redimensionan automáticamente
+- Mantiene aspect ratio original
+- Calidad: JPEG 80%, WebP 80%, PNG optimizado
+- Conversión RGBA → RGB para compatibilidad
+
+**Storage:**
+
+- **Desarrollo:** Archivos en `/media/portfolio/worker_{id}/`
+- **Producción:** S3 bucket configurado en `settings.py`
+
+**Permisos:**
+
+- **POST:** Solo WORKER autenticado
+- **GET (propio):** Solo WORKER autenticado
+- **GET (público):** Cualquiera (sin autenticación)
+- **PATCH/DELETE:** Solo dueño WORKER
+
+**Ejemplo de Galería UI:**
+
+```javascript
+// Cargar portfolio al ver perfil de trabajador
+async function loadWorkerPortfolio(workerId) {
+  const response = await fetch(
+    `http://localhost:8000/api/users/workers/${workerId}/portfolio/`
+  );
+  const portfolio = await response.json();
+  
+  const gallery = document.getElementById('portfolio-gallery');
+  portfolio.forEach(item => {
+    const card = `
+      <div class="portfolio-card">
+        <img src="${item.image_url}" alt="${item.title}" />
+        <h3>${item.title}</h3>
+        <p>${item.description}</p>
+        <small>${new Date(item.created_at).toLocaleDateString()}</small>
+      </div>
+    `;
+    gallery.innerHTML += card;
+  });
+}
+```
+
+---
+
+## 5. Sistema de Recomendación IA
 
 Sistema de búsqueda semántica basado en Machine Learning (TF-IDF) que analiza biografías de trabajadores.
 
@@ -363,12 +643,12 @@ POST /api/users/workers/recommend/
       "average_rating": 4.7,
       "latitude": -12.0789,
       "longitude": -77.0234,
-    
+  
       // Campos de recomendación (planos para frontend)
       "recommendation_score": 0.8534,
       "matched_keywords": ["plomero", "reparaciones", "urgente", "fuga"],
       "explanation": "85% relevante - coincide con: plomero, reparaciones, urgente - a 4.7km",
-    
+  
       // Detalles completos (opcional, para análisis avanzado)
       "recommendation_details": {
         "semantic_similarity": 0.8534,
@@ -490,9 +770,9 @@ GET /api/users/workers/recommendation-analytics/?days=30
 
 ---
 
-## 5. Órdenes de Servicio
+## 6. Órdenes de Servicio
 
-### 5.1 Crear Orden
+### 6.1 Crear Orden
 
 ```http
 POST /api/orders/
@@ -538,7 +818,7 @@ POST /api/orders/
 
 ---
 
-### 5.2 Listar Órdenes
+### 6.2 Listar Órdenes
 
 ```http
 GET /api/orders/list/
@@ -557,7 +837,7 @@ GET /api/orders/list/
 
 ---
 
-### 5.3 Detalle de Orden
+### 6.3 Detalle de Orden
 
 ```http
 GET /api/orders/{id}/
@@ -569,7 +849,7 @@ GET /api/orders/{id}/
 
 ---
 
-### 5.4 Actualizar Estado
+### 6.4 Actualizar Estado
 
 ```http
 PATCH /api/orders/{id}/status/
@@ -592,7 +872,7 @@ PATCH /api/orders/{id}/status/
 
 ---
 
-### 5.5 Resumen de Precio
+### 6.5 Resumen de Precio
 
 ```http
 GET /api/orders/{id}/price-summary/
@@ -616,7 +896,7 @@ GET /api/orders/{id}/price-summary/
 
 ---
 
-## 6. Registro de Horas
+## 7. Registro de Horas
 
 ### 6.1 Listar Horas de una Orden
 
@@ -686,7 +966,7 @@ POST /api/orders/{order_id}/work-hours/{id}/approve/
 
 ---
 
-## 7. Mensajería
+## 8. Mensajería
 
 ### 7.1 Listar Mensajes de Orden
 
@@ -737,7 +1017,7 @@ POST /api/orders/{order_id}/messages/
 
 ---
 
-## 8. Reseñas
+## 9. Reseñas
 
 ### 8.1 Crear Reseña
 
@@ -842,11 +1122,11 @@ GET /api/reviews/
 
 ---
 
-## 9. WebSockets
+## 10. WebSockets
 
 Para chat en tiempo real entre cliente y trabajador en una orden.
 
-### 9.1 Conectar a Chat de Orden
+### 10.1 Conectar a Chat de Orden
 
 ```
 ws://localhost:8000/ws/chat/{order_id}/
@@ -910,7 +1190,7 @@ ws.send(JSON.stringify({
 
 ---
 
-## 10. Códigos de Error
+## 11. Códigos de Error
 
 | Código | Significado           | Solución                             |
 | ------- | --------------------- | ------------------------------------- |
@@ -933,7 +1213,7 @@ ws.send(JSON.stringify({
 
 ---
 
-## 11. Rate Limiting
+## 12. Rate Limiting
 
 | Endpoint                               | Límite      | Periodo  |
 | -------------------------------------- | ------------ | -------- |
@@ -954,7 +1234,7 @@ ws.send(JSON.stringify({
 
 ---
 
-## 12. Paginación
+## 13. Paginación
 
 Endpoints que retornan listas usan paginación estándar:
 
@@ -976,7 +1256,7 @@ Endpoints que retornan listas usan paginación estándar:
 
 ---
 
-## 13. Notas Importantes
+## 14. Notas Importantes
 
 ### Idioma en Sistema de Recomendación
 
@@ -999,62 +1279,6 @@ Endpoints que retornan listas usan paginación estándar:
 
 ---
 
-## 14. Ejemplos de Integración
-
-### React/TypeScript
-
-```typescript
-// services/api.ts
-const API_BASE = 'http://localhost:8000';
-
-interface LoginResponse {
-  access: string;
-  refresh: string;
-}
-
-export async function login(email: string, password: string): Promise<LoginResponse> {
-  const response = await fetch(`${API_BASE}/api/auth/login/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  });
-  
-  if (!response.ok) {
-    throw new Error('Login failed');
-  }
-  
-  return response.json();
-}
-
-export async function searchWorkers(query: string, lat: number, lon: number) {
-  const token = localStorage.getItem('access_token');
-  
-  const response = await fetch(`${API_BASE}/api/users/workers/recommend/`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` })
-    },
-    body: JSON.stringify({
-      query,
-      language: 'es',
-      latitude: lat,
-      longitude: lon,
-      max_distance_km: 20,
-      top_n: 10
-    })
-  });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Search failed');
-  }
-  
-  return response.json();
-}
-```
-
----
 
 ## 15. Contacto y Soporte
 
@@ -1065,5 +1289,5 @@ export async function searchWorkers(query: string, lat: number, lon: number) {
 **Para preguntas sobre:**
 
 - Arquitectura ML → `docs/RECOMMENDATION_ARCHITECTURE.md`
-- Decisiones técnicas → `docs/TECHNICAL_DECISIONS.md`
+- Decisiones técnicas (IA) → `docs/TECHNICAL_DECISIONS.md`
 - Esta API → `docs/FRONTEND_API_SPEC.md` (este archivo)

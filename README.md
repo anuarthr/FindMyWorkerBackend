@@ -12,6 +12,7 @@ Sistema de recomendación inteligente basado en IA para conectar clientes con tr
 - 🤖 Sistema de recomendación con TF-IDF
 - 🎯 Búsqueda semántica en lenguaje natural
 - 📊 Analytics y métricas de recomendación
+- 📸 Portafolio visual de evidencias con compresión automática
 
 ## Tecnologías
 
@@ -22,6 +23,8 @@ Sistema de recomendación inteligente basado en IA para conectar clientes con tr
 - scikit-learn 1.4.0+ (Machine Learning)
 - NLTK 3.8.1+ (NLP español)
 - joblib 1.3.2+ (Model caching)
+- Pillow 12.0.0+ (Image processing)
+- boto3 + django-storages (S3 storage)
 
 ## Instalación
 
@@ -107,6 +110,15 @@ POST /api/orders/{id}/work-hours/{log_id}/approve/
 POST   /api/users/workers/recommend/                  # Búsqueda semántica
 GET    /api/users/workers/recommendation-analytics/   # Métricas (admin)
 GET    /api/users/workers/recommendation-health/      # Health check
+```
+
+### Portafolio Visual (HU4)
+```
+POST   /api/users/workers/portfolio/                  # Crear item de portfolio
+GET    /api/users/workers/portfolio/                  # Listar portfolio propio
+GET    /api/users/workers/{id}/portfolio/             # Portfolio público
+PATCH  /api/users/workers/portfolio/{id}/             # Actualizar item
+DELETE /api/users/workers/portfolio/{id}/             # Eliminar item
 ```
 
 ### WebSocket
@@ -316,11 +328,149 @@ python manage.py validate_corpus --fix-empty
 
 ---
 
-## 📚 Documentación Técnica
+## � Portafolio Visual - Quick Start
 
-Para detalles de arquitectura, decisiones técnicas y fundamentos teóricos del sistema de recomendación:
+### 1. Subir Foto de Proyecto
 
-📖 [RECOMMENDATION_ARCHITECTURE.md](docs/RECOMMENDATION_ARCHITECTURE.md)
+**Request:**
+```bash
+curl -X POST http://localhost:8000/api/users/workers/portfolio/ \
+  -H "Authorization: Bearer <worker_token>" \
+  -F "title=Remodelación de Cocina" \
+  -F "description=Proyecto completo de remodelación con instalación de muebles y acabados" \
+  -F "image=@foto_proyecto.jpg"
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "title": "Remodelación de Cocina",
+  "description": "Proyecto completo de remodelación con instalación de muebles y acabados",
+  "image": "/media/portfolio/worker_12/remodelacion_cocina.jpg",
+  "image_url": "http://localhost:8000/media/portfolio/worker_12/remodelacion_cocina.jpg",
+  "created_at": "2026-02-10T15:30:00Z"
+}
+```
+
+### 2. Características del Sistema
+
+- ✅ **Compresión automática:** Imágenes >1600px se redimensionan manteniendo aspect ratio
+- ✅ **Optimización de calidad:** JPEG 80%, WebP 80%, PNG optimizado
+- ✅ **Validaciones robustas:** Tamaño máximo 5MB, formatos permitidos (JPG, PNG, WEBP)
+- ✅ **Storage flexible:** Desarrollo local + producción S3
+- ✅ **Permisos granulares:** Solo WORKER puede crear, lectura pública para todos
+
+### 3. Ver Portfolio Público
+
+```bash
+curl http://localhost:8000/api/users/workers/12/portfolio/
+```
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "title": "Remodelación de Cocina",
+    "description": "Proyecto completo de remodelación...",
+    "image_url": "http://localhost:8000/media/portfolio/worker_12/remodelacion_cocina.jpg",
+    "created_at": "2026-02-10T15:30:00Z"
+  },
+  {
+    "id": 2,
+    "title": "Instalación Eléctrica Residencial",
+    "description": "Cableado completo para casa de 3 pisos...",
+    "image_url": "http://localhost:8000/media/portfolio/worker_12/instalacion_electrica.jpg",
+    "created_at": "2026-02-08T10:15:00Z"
+  }
+]
+```
+
+### 4. Actualizar/Eliminar Items
+
+**Actualizar:**
+```bash
+curl -X PATCH http://localhost:8000/api/users/workers/portfolio/1/ \
+  -H "Authorization: Bearer <worker_token>" \
+  -F "title=Remodelación Completa de Cocina Moderna"
+```
+
+**Eliminar:**
+```bash
+curl -X DELETE http://localhost:8000/api/users/workers/portfolio/1/ \
+  -H "Authorization: Bearer <worker_token>"
+```
+
+### 5. Configuración de Storage
+
+**Desarrollo (local):**
+```python
+# settings.py
+USE_S3 = False
+MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = '/media/'
+```
+
+**Producción (S3):**
+```env
+# .env
+USE_S3=True
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_STORAGE_BUCKET_NAME=findmyworker-media
+AWS_S3_REGION_NAME=us-east-1
+```
+
+### 6. Testing
+
+```bash
+# Tests completos de portfolio (24 tests)
+python manage.py test users.tests.test_portfolio -v 2
+
+# Tests específicos
+python manage.py test users.tests.test_portfolio.ImageValidatorTests
+python manage.py test users.tests.test_portfolio.PortfolioPermissionsTests
+python manage.py test users.tests.test_portfolio.PortfolioEndpointTests
+```
+
+### 7. Estructura de Almacenamiento
+
+```
+media/
+└── portfolio/
+    ├── worker_12/
+    │   ├── remodelacion_cocina.jpg
+    │   └── instalacion_electrica.jpg
+    ├── worker_45/
+    │   └── proyecto_fontaneria.jpg
+    └── worker_78/
+        ├── pintura_exterior.jpg
+        └── carpinteria_muebles.webp
+```
+
+---
+## ✅ Historias de Usuario Implementadas
+
+- [x] **HU1:** Exploración Avanzada de Trabajadores
+- [x] **HU2:** Búsqueda Semántica Inteligente (IA TF-IDF)
+- [x] **HU3:** Mapa Interactivo de Talentos (GeoDjango)
+- [x] **HU4:** Portafolio Visual de Evidencias
+- [x] **HU5:** Flujo de Contratación con Pagos
+- [x] **HU6:** Chat en Tiempo Real (WebSockets)
+- [x] **HU7:** Sistema de Reputación
+- [ ] **HU8:** Tablero de Control Administrativo (En desarrollo)
+
+---
+## �📚 Documentación Técnica
+
+Para detalles de arquitectura, decisiones técnicas y fundamentos teóricos:
+
+📖 [RECOMMENDATION_ARCHITECTURE.md](docs/RECOMMENDATION_ARCHITECTURE.md) - Sistema de recomendación inteligente
+
+📖 [FRONTEND_API_SPEC.md](docs/FRONTEND_API_SPEC.md) - Especificación completa de API para frontend
+
+📖 [TECHNICAL_DECISIONS.md](docs/TECHNICAL_DECISIONS.md) - Decisiones técnicas y patrones aplicados
 
 ---
 
