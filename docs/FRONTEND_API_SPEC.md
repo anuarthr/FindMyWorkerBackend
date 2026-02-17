@@ -299,7 +299,7 @@ GET /api/workers/{id}/
 
 ## 4. Portafolio Visual
 
-Sistema de gestión de portafolio fotográfico para trabajadores. Permite subir imágenes de proyectos con compresión automática, validación de formatos y almacenamiento optimizado.
+Sistema de gestión de portafolio fotográfico para trabajadores. Permite subir imágenes de proyectos con compresión automática, validación de formatos y almacenamiento optimizado. **NUEVO:** Soporta asociación con órdenes completadas de la plataforma para verificación de trabajos.
 
 ### 4.1 Crear Item de Portafolio
 
@@ -313,19 +313,24 @@ POST /api/users/workers/portfolio/
 
 **Request Body (Form Data):**
 
-| Campo           | Tipo   | Requerido | Descripción                                |
-| --------------- | ------ | --------- | ------------------------------------------- |
-| `title`       | string | ✅        | Título del proyecto (max 255 caracteres)   |
-| `description` | string | ❌        | Descripción detallada del proyecto         |
-| `image`       | file   | ✅        | Imagen del proyecto (max 5MB, JPG/PNG/WEBP) |
+| Campo           | Tipo    | Requerido | Descripción                                                     |
+| --------------- | ------- | --------- | ---------------------------------------------------------------- |
+| `title`       | string  | ✅        | Título del proyecto (max 255 caracteres)                        |
+| `description` | string  | ❌        | Descripción detallada del proyecto                              |
+| `image`       | file    | ✅        | Imagen del proyecto (max 5MB, JPG/PNG/WEBP)                     |
+| `order`       | integer | ❌        | ID de orden completada (solo órdenes COMPLETED del trabajador) |
 
 **Ejemplo con JavaScript (Fetch):**
 
 ```javascript
+// Opción 1: Trabajo externo (sin asociar orden)
 const formData = new FormData();
 formData.append('title', 'Remodelación de Cocina');
 formData.append('description', 'Proyecto completo de remodelación con instalación de muebles y acabados');
 formData.append('image', fileInput.files[0]);
+
+// Opción 2: Trabajo de la plataforma (con orden asociada)
+// formData.append('order', orderId); // ID de orden COMPLETED
 
 fetch('http://localhost:8000/api/users/workers/portfolio/', {
   method: 'POST',
@@ -341,12 +346,34 @@ fetch('http://localhost:8000/api/users/workers/portfolio/', {
 **Response (201 Created):**
 
 ```json
+// Trabajo externo (sin orden asociada)
 {
   "id": 1,
   "title": "Remodelación de Cocina",
   "description": "Proyecto completo de remodelación con instalación de muebles y acabados",
   "image": "/media/portfolio/worker_12/remodelacion_cocina.jpg",
   "image_url": "http://localhost:8000/media/portfolio/worker_12/remodelacion_cocina.jpg",
+  "order": null,
+  "is_external_work": true,
+  "order_info": null,
+  "created_at": "2026-02-10T15:30:00Z"
+}
+
+// Trabajo de la plataforma (con orden asociada) - ¡VERIFICADO! ✓
+{
+  "id": 2,
+  "title": "Reparación de Tubería",
+  "description": "Trabajo completado para cliente de la plataforma",
+  "image_url": "http://localhost:8000/media/portfolio/worker_12/tuberia.jpg",
+  "order": 45,
+  "is_external_work": false,
+  "order_info": {
+    "id": 45,
+    "client_name": "María García",
+    "description": "Reparación urgente de fuga en baño",
+    "status": "COMPLETED",
+    "updated_at": "2026-02-09T18:30:00Z"
+  },
   "created_at": "2026-02-10T15:30:00Z"
 }
 ```
@@ -358,6 +385,9 @@ fetch('http://localhost:8000/api/users/workers/portfolio/', {
 - ✅ Formatos permitidos: JPG, PNG, WEBP
 - ✅ Compresión automática si width > 1600px
 - ✅ Solo rol WORKER puede crear
+- ✅ Orden (si provista) debe estar COMPLETED
+- ✅ Orden (si provista) debe pertenecer al trabajador
+- ✅ `is_external_work` se auto-establece (false si hay orden, true si no)
 
 **Errores comunes:**
 
@@ -375,6 +405,16 @@ fetch('http://localhost:8000/api/users/workers/portfolio/', {
 // 400 - Formato no permitido
 {
   "image": ["Extensión de archivo no permitida: .gif. Use: .jpg, .png o .webp"]
+}
+
+// 400 - Orden no completada
+{
+  "order": ["Solo puedes asociar órdenes con estado COMPLETED."]
+}
+
+// 400 - Orden de otro trabajador
+{
+  "order": ["Solo puedes asociar tus propias órdenes."]
 }
 
 // 403 - Usuario no es WORKER
@@ -403,6 +443,9 @@ GET /api/users/workers/portfolio/
     "description": "Proyecto completo de remodelación...",
     "image": "/media/portfolio/worker_12/remodelacion_cocina.jpg",
     "image_url": "http://localhost:8000/media/portfolio/worker_12/remodelacion_cocina.jpg",
+    "order": null,
+    "is_external_work": true,
+    "order_info": null,
     "created_at": "2026-02-10T15:30:00Z"
   },
   {
@@ -410,6 +453,13 @@ GET /api/users/workers/portfolio/
     "title": "Instalación Eléctrica Residencial",
     "description": "Cableado completo para casa de 3 pisos...",
     "image_url": "http://localhost:8000/media/portfolio/worker_12/instalacion_electrica.jpg",
+    "order": 52,
+    "is_external_work": false,
+    "order_info": {
+      "id": 52,
+      "client_name": "Carlos Mendoza",
+      "status": "COMPLETED"
+    },
     "created_at": "2026-02-08T10:15:00Z"
   }
 ]
@@ -524,7 +574,99 @@ fetch('http://localhost:8000/api/users/workers/portfolio/1/', {
 
 ---
 
-### 4.6 Notas de Implementación
+### 4.6 Obtener Órdenes Completadas Sin Portfolio
+
+```http
+GET /api/orders/workers/me/completed-without-portfolio/
+```
+
+**Requiere autenticación:** ✅ (Solo rol WORKER)
+
+**Descripción:** Retorna las órdenes completadas del trabajador que aún no tienen un item de portfolio asociado. Útil para mostrar un dropdown/selector al crear portfolio.
+
+**Response (200 OK):**
+
+```json
+[
+  {
+    "id": 45,
+    "client_name": "María García",
+    "description": "Reparación urgente de fuga en baño",
+    "status": "COMPLETED",
+    "updated_at": "2026-02-09T18:30:00Z"
+  },
+  {
+    "id": 48,
+    "client_name": "Pedro López",
+    "description": "Instalación de sistema de riego",
+    "status": "COMPLETED",
+    "updated_at": "2026-02-07T14:20:00Z"
+  }
+]
+```
+
+**Ejemplo de uso (React):**
+
+```javascript
+function PortfolioUploadModal() {
+  const [availableOrders, setAvailableOrders] = useState([]);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+
+  useEffect(() => {
+    // Cargar órdenes disponibles
+    fetch('http://localhost:8000/api/orders/workers/me/completed-without-portfolio/', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => setAvailableOrders(data));
+  }, []);
+
+  const handleSubmit = () => {
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('description', description);
+    formData.append('image', imageFile);
+    
+    // Asociar orden si se seleccionó (trabajo verificado)
+    if (selectedOrder) {
+      formData.append('order', selectedOrder.id);
+    }
+    
+    // POST request...
+  };
+
+  return (
+    <div>
+      <input type="text" placeholder="Título" />
+      <textarea placeholder="Descripción" />
+      <input type="file" accept="image/*" />
+      
+      {/* Selector de orden (opcional) */}
+      <select onChange={(e) => setSelectedOrder(availableOrders[e.target.value])}>
+        <option value="">Trabajo externo (no verificado)</option>
+        {availableOrders.map((order, idx) => (
+          <option key={order.id} value={idx}>
+            {order.client_name} - {order.description}
+          </option>
+        ))}
+      </select>
+      
+      <button onClick={handleSubmit}>Subir</button>
+    </div>
+  );
+}
+```
+
+**Filtros aplicados automáticamente:**
+
+- ✅ Solo órdenes del trabajador autenticado
+- ✅ Solo órdenes con estado `COMPLETED`
+- ✅ Solo órdenes sin portfolio asociado
+- 📅 Ordenadas por fecha de actualización (más recientes primero)
+
+---
+
+### 4.7 Notas de Implementación
 
 **Compresión Automática:**
 
@@ -544,6 +686,31 @@ fetch('http://localhost:8000/api/users/workers/portfolio/1/', {
 - **GET (propio):** Solo WORKER autenticado
 - **GET (público):** Cualquiera (sin autenticación)
 - **PATCH/DELETE:** Solo dueño WORKER
+
+**Badge Verificado UI:**
+
+Mostrar badge "✓ Verificado" cuando `is_external_work === false`:
+
+```javascript
+function PortfolioCard({ item }) {
+  return (
+    <div className="portfolio-card">
+      <img src={item.image_url} alt={item.title} />
+      <h3>
+        {item.title}
+        {!item.is_external_work && (
+          <span className="verified-badge">✓ Verificado</span>
+        )}
+      </h3>
+      {item.order_info && (
+        <p className="client-info">
+          Cliente: {item.order_info.client_name}
+        </p>
+      )}
+    </div>
+  );
+}
+```
 
 **Ejemplo de Galería UI:**
 

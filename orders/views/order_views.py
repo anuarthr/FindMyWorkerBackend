@@ -17,6 +17,7 @@ from ..models import ServiceOrder, WorkHoursLog
 from ..serializers import (
     ServiceOrderSerializer,
     ServiceOrderStatusSerializer,
+    CompletedOrderForPortfolioSerializer,
 )
 from ..permissions import IsOrderParticipant, CanChangeOrderStatus
 
@@ -217,3 +218,52 @@ def worker_metrics(request):
     
     logger.info(f"Metrics generated for worker {request.user.email}")
     return Response(metrics_data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def completed_orders_without_portfolio(request):
+    """
+    GET /api/orders/workers/me/completed-without-portfolio/
+    
+    Retorna órdenes completadas del trabajador que aún no tienen foto de portfolio asociada.
+    
+    Usado para el selector de órdenes al crear items de portfolio.
+    
+    **Permisos**: Solo trabajadores autenticados
+    
+    **Response**:
+    [
+        {
+            "id": 123,
+            "client_name": "Juan Pérez",
+            "description": "Reparación de fuga en cocina",
+            "updated_at": "2026-02-10T15:30:00Z",
+            "status": "COMPLETED"
+        }
+    ]
+    """
+    user = request.user
+    
+    # Verificar que el usuario es un trabajador
+    worker_profile = getattr(user, 'worker_profile', None)
+    if not worker_profile:
+        return Response(
+            {"detail": _("El usuario no tiene perfil de trabajador.")},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Obtener órdenes completadas sin portfolio asociado
+    orders = ServiceOrder.objects.filter(
+        worker=worker_profile,
+        status='COMPLETED',
+        portfolio_items__isnull=True  # Sin fotos asociadas
+    ).select_related('client').order_by('-updated_at')
+    
+    serializer = CompletedOrderForPortfolioSerializer(orders, many=True)
+    
+    logger.info(
+        f"Worker {user.email} retrieved {orders.count()} completed orders without portfolio"
+    )
+    
+    return Response(serializer.data, status=status.HTTP_200_OK)

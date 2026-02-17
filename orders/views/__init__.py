@@ -15,6 +15,7 @@ from .order_views import (
     ServiceOrderDetailView,
     ServiceOrderStatusUpdateView,
     worker_metrics,
+    completed_orders_without_portfolio,
     StandardResultsSetPagination,
 )
 
@@ -46,6 +47,7 @@ __all__ = [
     'ServiceOrderDetailView',
     'ServiceOrderStatusUpdateView',
     'worker_metrics',
+    'completed_orders_without_portfolio',
     # Hours
     'WorkHoursLogViewSet',
     'order_price_summary',

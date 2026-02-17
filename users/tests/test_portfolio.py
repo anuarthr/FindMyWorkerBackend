@@ -19,10 +19,12 @@ from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
 from users.models import WorkerProfile, PortfolioItem
+from orders.models import ServiceOrder
 from users.validators import validate_image_size, ImageContentTypeValidator
 from users.permissions import IsWorkerAndOwnerOrReadOnly
 from users.constants import MAX_IMAGE_SIZE_MB, ALLOWED_IMAGE_EXTENSIONS
 from unittest.mock import Mock
+from decimal import Decimal
 
 User = get_user_model()
 
@@ -582,3 +584,335 @@ class PortfolioEdgeCaseTests(APITestCase):
         )
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+# ============================================================================
+# TESTS DE RELACIÓN PORTFOLIO-ORDER
+# ============================================================================
+
+class PortfolioOrderRelationTests(APITestCase):
+    """Tests para validación de orden asociada a portfolio"""
+
+    def setUp(self):
+        """Configurar datos de prueba"""
+        # Crear cliente
+        self.client_user = User.objects.create_user(
+            email='client@test.com',
+            password='testpass123',
+            first_name='Client',
+            last_name='User',
+            role='CLIENT'
+        )
+        
+        # Crear trabajador (signal crea WorkerProfile automáticamente)
+        self.worker_user = User.objects.create_user(
+            email='worker@test.com',
+            password='testpass123',
+            first_name='Worker',
+            last_name='User',
+            role='WORKER'
+        )
+        
+        # Obtener y actualizar el perfil creado automáticamente
+        self.worker_profile = self.worker_user.worker_profile
+        self.worker_profile.profession = 'PLUMBER'
+        self.worker_profile.hourly_rate = Decimal('25.00')
+        self.worker_profile.years_experience = 5
+        self.worker_profile.bio = 'Experienced plumber'
+        self.worker_profile.save()
+        
+        # Crear órdenes con diferentes estados
+        self.completed_order = ServiceOrder.objects.create(
+            client=self.client_user,
+            worker=self.worker_profile,
+            description='Fix bathroom leak',
+            status='COMPLETED'
+        )
+        
+        self.in_progress_order = ServiceOrder.objects.create(
+            client=self.client_user,
+            worker=self.worker_profile,
+            description='Install new pipes',
+            status='IN_PROGRESS'
+        )
+        
+        # Autenticar como trabajador
+        self.client.force_authenticate(user=self.worker_user)
+
+    def create_test_image(self):
+        """Helper para crear imagen de prueba"""
+        img = PILImage.new('RGB', (100, 100), color='blue')
+        buffer = BytesIO()
+        img.save(buffer, format='JPEG')
+        buffer.seek(0)
+        return SimpleUploadedFile("test.jpg", buffer.read(), content_type="image/jpeg")
+
+    def test_portfolio_with_completed_order_succeeds(self):
+        """Debe permitir asociar orden COMPLETED del trabajador"""
+        image = self.create_test_image()
+        
+        response = self.client.post(
+            '/api/users/workers/portfolio/',
+            {
+                'title': 'Bathroom Repair Project',
+                'description': 'Fixed leak successfully',
+                'order': self.completed_order.id,
+                'image': image
+            },
+            format='multipart'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['order'], self.completed_order.id)
+        self.assertFalse(response.data['is_external_work'])
+        self.assertIsNotNone(response.data['order_info'])
+        self.assertEqual(response.data['order_info']['client_name'], 'Client User')
+
+    def test_portfolio_with_non_completed_order_fails(self):
+        """Debe rechazar órdenes que no están COMPLETED"""
+        image = self.create_test_image()
+        
+        response = self.client.post(
+            '/api/users/workers/portfolio/',
+            {
+                'title': 'Ongoing Project',
+                'description': 'Still working',
+                'order': self.in_progress_order.id,
+                'image': image
+            },
+            format='multipart'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('order', response.data)
+        self.assertIn('completadas', str(response.data['order']))
+
+    def test_portfolio_with_other_worker_order_fails(self):
+        """Debe rechazar órdenes que no pertenecen al trabajador"""
+        # Crear otro trabajador
+        other_worker_user = User.objects.create_user(
+            email='other@test.com',
+            password='testpass123',
+            role='WORKER'
+        )
+        # Obtener perfil auto-creado y actualizar
+        other_worker_profile = other_worker_user.worker_profile
+        other_worker_profile.profession = 'ELECTRICIAN'
+        other_worker_profile.hourly_rate = Decimal('30.00')
+        other_worker_profile.years_experience = 3
+        other_worker_profile.save()
+        
+        # Orden completada de otro trabajador
+        other_order = ServiceOrder.objects.create(
+            client=self.client_user,
+            worker=other_worker_profile,
+            description='Electrical work',
+            status='COMPLETED'
+        )
+        
+        image = self.create_test_image()
+        
+        response = self.client.post(
+            '/api/users/workers/portfolio/',
+            {
+                'title': 'Trying to steal credit',
+                'description': 'Not my work',
+                'order': other_order.id,
+                'image': image
+            },
+            format='multipart'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('order', response.data)
+
+    def test_portfolio_without_order_is_external_work(self):
+        """Portfolio sin orden debe marcarse como trabajo externo"""
+        image = self.create_test_image()
+        
+        response = self.client.post(
+            '/api/users/workers/portfolio/',
+            {
+                'title': 'External Project',
+                'description': 'Work done outside platform',
+                'image': image
+            },
+            format='multipart'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(response.data['order'])
+        self.assertTrue(response.data['is_external_work'])
+        self.assertIsNone(response.data['order_info'])
+
+    def test_order_info_shows_complete_information(self):
+        """Campo order_info debe mostrar datos completos de la orden"""
+        image = self.create_test_image()
+        
+        response = self.client.post(
+            '/api/users/workers/portfolio/',
+            {
+                'title': 'Platform Work',
+                'description': 'Verified platform job',
+                'order': self.completed_order.id,
+                'image': image
+            },
+            format='multipart'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        order_info = response.data['order_info']
+        self.assertEqual(order_info['id'], self.completed_order.id)
+        self.assertEqual(order_info['client_name'], 'Client User')
+        self.assertEqual(order_info['status'], 'COMPLETED')
+        self.assertEqual(order_info['description'], 'Fix bathroom leak')
+
+
+class CompletedOrdersWithoutPortfolioTests(APITestCase):
+    """Tests para endpoint de órdenes completadas sin portfolio"""
+
+    def setUp(self):
+        """Configurar datos de prueba"""
+        self.client_user = User.objects.create_user(
+            email='client@test.com',
+            password='testpass123',
+            role='CLIENT'
+        )
+        
+        self.worker_user = User.objects.create_user(
+            email='worker@test.com',
+            password='testpass123',
+            first_name='John',
+            last_name='Doe',
+            role='WORKER'
+        )
+        
+        # Obtener y actualizar el perfil creado automáticamente
+        self.worker_profile = self.worker_user.worker_profile
+        self.worker_profile.profession = 'CARPENTER'
+        self.worker_profile.hourly_rate = Decimal('20.00')
+        self.worker_profile.years_experience = 4
+        self.worker_profile.save()
+
+    def test_requires_authentication(self):
+        """Endpoint debe requerir autenticación"""
+        response = self.client.get('/api/orders/workers/me/completed-without-portfolio/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_requires_worker_role(self):
+        """Endpoint debe requerir rol WORKER"""
+        self.client.force_authenticate(user=self.client_user)
+        
+        response = self.client.get('/api/orders/workers/me/completed-without-portfolio/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_returns_only_completed_orders(self):
+        """Debe retornar solo órdenes COMPLETED"""
+        # Crear órdenes con diferentes estados
+        ServiceOrder.objects.create(
+            client=self.client_user,
+            worker=self.worker_profile,
+            description='Done',
+            status='COMPLETED'
+        )
+        
+        ServiceOrder.objects.create(
+            client=self.client_user,
+            worker=self.worker_profile,
+            description='Working',
+            status='IN_PROGRESS'
+        )
+        
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.get('/api/orders/workers/me/completed-without-portfolio/')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['status'], 'COMPLETED')
+
+    def test_excludes_orders_with_portfolio(self):
+        """Debe excluir órdenes que ya tienen portfolio asociado"""
+        # Crear orden completada
+        order = ServiceOrder.objects.create(
+            client=self.client_user,
+            worker=self.worker_profile,
+            description='Has portfolio',
+            status='COMPLETED'
+        )
+        
+        # Asociar portfolio a la orden
+        PortfolioItem.objects.create(
+            worker=self.worker_profile,
+            title='Project',
+            description='Test',
+            order=order,
+            is_external_work=False
+        )
+        
+        # Crear otra orden sin portfolio
+        ServiceOrder.objects.create(
+            client=self.client_user,
+            worker=self.worker_profile,
+            description='No portfolio',
+            status='COMPLETED'
+        )
+        
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.get('/api/orders/workers/me/completed-without-portfolio/')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['description'], 'No portfolio')
+
+    def test_returns_only_worker_own_orders(self):
+        """Debe retornar solo órdenes del trabajador autenticado"""
+        # Crear otro trabajador
+        other_worker_user = User.objects.create_user(
+            email='other@test.com',
+            password='testpass123',
+            role='WORKER'
+        )
+        # Obtener perfil auto-creado y actualizar
+        other_worker_profile = other_worker_user.worker_profile
+        other_worker_profile.profession = 'PAINTER'
+        other_worker_profile.hourly_rate = Decimal('15.00')
+        other_worker_profile.years_experience = 2
+        other_worker_profile.save()
+        
+        # Orden del trabajador autenticado
+        ServiceOrder.objects.create(
+            client=self.client_user,
+            worker=self.worker_profile,
+            description='Mine',
+            status='COMPLETED'
+        )
+        
+        # Orden de otro trabajador
+        ServiceOrder.objects.create(
+            client=self.client_user,
+            worker=other_worker_profile,
+            description='Not mine',
+            status='COMPLETED'
+        )
+        
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.get('/api/orders/workers/me/completed-without-portfolio/')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['description'], 'Mine')
+
+    def test_response_includes_client_name(self):
+        """Respuesta debe incluir nombre del cliente"""
+        ServiceOrder.objects.create(
+            client=self.client_user,
+            worker=self.worker_profile,
+            description='Test',
+            status='COMPLETED'
+        )
+        
+        self.client.force_authenticate(user=self.worker_user)
+        response = self.client.get('/api/orders/workers/me/completed-without-portfolio/')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('client_name', response.data[0])

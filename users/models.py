@@ -290,6 +290,7 @@ class PortfolioItem(models.Model):
     - Las imágenes se comprimen automáticamente al subir
     - Máximo 2MB por imagen (validado antes de comprimir)
     - Lectura pública, escritura solo para dueño
+    - Puede relacionarse con órdenes completadas en la plataforma
     
     Relacionado con HU4: Portafolio Visual de Evidencias
     """
@@ -317,6 +318,20 @@ class PortfolioItem(models.Model):
         validators=portfolio_image_validators,
         help_text=_("Foto antes/después o muestra del proyecto (máx 2MB)")
     )
+    order = models.ForeignKey(
+        "orders.ServiceOrder",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="portfolio_items",
+        verbose_name=_("Orden Relacionada"),
+        help_text=_("Orden de servicio completada asociada a este proyecto (opcional)")
+    )
+    is_external_work = models.BooleanField(
+        _("Trabajo Externo"),
+        default=True,
+        help_text=_("Indica si es un trabajo fuera de la plataforma")
+    )
     created_at = models.DateTimeField(
         _("Fecha de Creación"),
         auto_now_add=True
@@ -328,6 +343,8 @@ class PortfolioItem(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["worker", "-created_at"], name="portfolio_worker_created_idx"),
+            models.Index(fields=["order"], name="portfolio_order_idx"),
+            models.Index(fields=["is_external_work"], name="portfolio_external_idx"),
         ]
     
     def save(self, *args, **kwargs):

@@ -431,6 +431,7 @@ class PortfolioItemSerializer(serializers.ModelSerializer):
     worker_user_id = serializers.IntegerField(source="worker.user.id", read_only=True)
     worker_email = serializers.EmailField(source="worker.user.email", read_only=True)
     image_url = serializers.SerializerMethodField()
+    order_info = serializers.SerializerMethodField()
     
     class Meta:
         model = PortfolioItem
@@ -443,6 +444,9 @@ class PortfolioItemSerializer(serializers.ModelSerializer):
             "description",
             "image",
             "image_url",
+            "order",
+            "is_external_work",
+            "order_info",
             "created_at",
         ]
         read_only_fields = [
@@ -452,6 +456,8 @@ class PortfolioItemSerializer(serializers.ModelSerializer):
             "worker_email",
             "created_at",
             "image_url",
+            "is_external_work",
+            "order_info",
         ]
     
     def get_image_url(self, obj):
@@ -465,6 +471,27 @@ class PortfolioItemSerializer(serializers.ModelSerializer):
             
             return url
         return None
+    
+    def get_order_info(self, obj):
+        """
+        Retorna información básica de la orden si existe.
+        
+        Incluye datos del cliente y estado para contexto.
+        """
+        if obj.order:
+            # Construir nombre del cliente
+            client_name = f"{obj.order.client.first_name} {obj.order.client.last_name}".strip()
+            if not client_name:
+                client_name = obj.order.client.email
+            
+            return {
+                "id": obj.order.id,
+                "client_name": client_name,
+                "description": obj.order.description,
+                "status": obj.order.status,
+                "updated_at": obj.order.updated_at
+            }
+        return None
 
 
 class PortfolioItemCreateSerializer(serializers.ModelSerializer):
@@ -472,13 +499,14 @@ class PortfolioItemCreateSerializer(serializers.ModelSerializer):
     Serializador de escritura para items de portfolio.
     
     Maneja creación y actualizaciones con asignación automática de worker.
+    Permite relacionar con órdenes completadas de la plataforma.
     Usado para operaciones POST/PATCH/PUT.
     """
     
     class Meta:
         model = PortfolioItem
-        fields = ["id", "title", "description", "image"]
-        read_only_fields = ["id"]
+        fields = ["id", "title", "description", "image", "order", "is_external_work"]
+        read_only_fields = ["id", "is_external_work"]
     
     def validate_image(self, image):
         """Los validadores del modelo ya aplican."""
@@ -497,6 +525,37 @@ class PortfolioItemCreateSerializer(serializers.ModelSerializer):
             )
         return title.strip()
     
+    def validate_order(self, order):
+        """
+        Valida que la orden pertenece al trabajador y esté completada.
+        """
+        if order:
+            request = self.context.get("request")
+            if not request or not request.user:
+                raise serializers.ValidationError(
+                    _("Usuario no autenticado.")
+                )
+            
+            worker_profile = getattr(request.user, "worker_profile", None)
+            if not worker_profile:
+                raise serializers.ValidationError(
+                    _("El usuario no tiene perfil de trabajador.")
+                )
+            
+            # Validar que la orden pertenece al trabajador
+            if order.worker != worker_profile:
+                raise serializers.ValidationError(
+                    _("No puedes asociar una orden que no te pertenece.")
+                )
+            
+            # Validar que la orden esté completada
+            if order.status != 'COMPLETED':
+                raise serializers.ValidationError(
+                    _("Solo puedes asociar órdenes completadas.")
+                )
+        
+        return order
+    
     def create(self, validated_data):
         """Crea item de portfolio para el trabajador autenticado."""
         request = self.context.get("request")
@@ -512,6 +571,11 @@ class PortfolioItemCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"detail": _("El usuario no tiene perfil de trabajador.")}
             )
+        
+        # Si hay orden asociada, marcar como trabajo de la plataforma
+        order = validated_data.get('order')
+        if order:
+            validated_data['is_external_work'] = False
         
         return PortfolioItem.objects.create(
             worker=worker_profile,
