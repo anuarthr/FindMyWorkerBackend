@@ -60,7 +60,7 @@ class MyPortfolioListCreateView(generics.ListCreateAPIView):
             return PortfolioItem.objects.none()
         
         return PortfolioItem.objects.filter(worker=worker_profile).select_related(
-            "worker", "worker__user"
+            "worker", "worker__user", "order", "order__client"
         )
     
     def get_serializer_class(self):
@@ -75,13 +75,31 @@ class MyPortfolioListCreateView(generics.ListCreateAPIView):
         context["request"] = self.request
         return context
     
-    def perform_create(self, serializer):
-        """Registra creación de item de portfolio."""
+    def create(self, request, *args, **kwargs):
+        """
+        Crea un item de portfolio y retorna representación completa.
+        
+        Usa PortfolioItemCreateSerializer para validación/creación,
+        luego serializa con PortfolioItemSerializer para incluir order_info.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         instance = serializer.save()
+        
+        # Log de creación
         logger.info(
             f"Portfolio item creado: {instance.title} "
             f"por trabajador {instance.worker.user.email} (ID: {instance.id})"
         )
+        
+        # Serializar respuesta con el serializer de lectura (incluye order_info)
+        read_serializer = PortfolioItemSerializer(instance, context={'request': request})
+        headers = self.get_success_headers(read_serializer.data)
+        return Response(read_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    def perform_create(self, serializer):
+        """Override no necesario - lógica movida a create()."""
+        pass
 
 
 class WorkerPortfolioListView(generics.ListAPIView):
@@ -108,7 +126,7 @@ class WorkerPortfolioListView(generics.ListAPIView):
         worker_id = self.kwargs.get("worker_id")
         return PortfolioItem.objects.filter(
             worker_id=worker_id
-        ).select_related("worker", "worker__user")
+        ).select_related("worker", "worker__user", "order", "order__client")
     
     def get_serializer_context(self):
         """Incluye request en contexto del serializer."""
@@ -141,7 +159,7 @@ class PortfolioItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     - 404: Item no encontrado
     """
     
-    queryset = PortfolioItem.objects.select_related("worker", "worker__user")
+    queryset = PortfolioItem.objects.select_related("worker", "worker__user", "order", "order__client")
     permission_classes = [IsWorkerAndOwnerOrReadOnly]
     parser_classes = [MultiPartParser, FormParser]
     
@@ -157,13 +175,32 @@ class PortfolioItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         context["request"] = self.request
         return context
     
-    def perform_update(self, serializer):
-        """Registra actualizaciones de items de portfolio."""
-        instance = serializer.save()
+    def update(self, request, *args, **kwargs):
+        """
+        Actualiza un item de portfolio y retorna representación completa.
+        
+        Usa PortfolioItemCreateSerializer para validación/actualización,
+        luego serializa con PortfolioItemSerializer para incluir order_info.
+        """
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        updated_instance = serializer.save()
+        
+        # Log de actualización
         logger.info(
-            f"Portfolio item actualizado: {instance.title} "
-            f"(ID: {instance.id}) por {self.request.user.email}"
+            f"Portfolio item actualizado: {updated_instance.title} "
+            f"(ID: {updated_instance.id}) por {request.user.email}"
         )
+        
+        # Serializar respuesta con el serializer de lectura
+        read_serializer = PortfolioItemSerializer(updated_instance, context={'request': request})
+        return Response(read_serializer.data)
+    
+    def perform_update(self, serializer):
+        """Override no necesario - lógica movida a update()."""
+        pass
     
     def perform_destroy(self, instance):
         """Registra eliminación de items de portfolio."""

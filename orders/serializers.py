@@ -407,6 +407,31 @@ class MessageSerializer(serializers.ModelSerializer):
         return cleaned_value
 
 
+class CompletedOrderForPortfolioSerializer(serializers.ModelSerializer):
+    """
+    Serializer simplificado para órdenes completadas sin portfolio asociado.
+    
+    Usado para listar órdenes disponibles al crear items de portfolio.
+    Incluye solo información esencial para el selector.
+    """
+    client_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ServiceOrder
+        fields = ['id', 'client_name', 'description', 'updated_at', 'status']
+        read_only_fields = ['id', 'client_name', 'description', 'updated_at', 'status']
+    
+    def get_client_name(self, obj):
+        """
+        Retorna el nombre completo del cliente o su email.
+        """
+        if not obj.client:
+            return "N/A"
+        
+        full_name = f"{obj.client.first_name} {obj.client.last_name}".strip()
+        return full_name if full_name else obj.client.email
+
+
 class ReviewListSerializer(serializers.ModelSerializer):
     """
     Serializer optimizado para listar reviews de un trabajador.
