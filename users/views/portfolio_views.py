@@ -8,7 +8,7 @@ Implementa HU4: Portafolio Visual de Evidencias.
 import logging
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from ..models import PortfolioItem
 from ..serializers import (
@@ -46,7 +46,7 @@ class MyPortfolioListCreateView(generics.ListCreateAPIView):
     """
     
     permission_classes = [IsWorkerAndOwnerOrReadOnly]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     
     def get_queryset(self):
         """Retorna items de portfolio solo para el trabajador autenticado."""
@@ -161,7 +161,7 @@ class PortfolioItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     
     queryset = PortfolioItem.objects.select_related("worker", "worker__user", "order", "order__client")
     permission_classes = [IsWorkerAndOwnerOrReadOnly]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     
     def get_serializer_class(self):
         """Usa serializer de escritura para modificaciones, lectura para obtención."""
