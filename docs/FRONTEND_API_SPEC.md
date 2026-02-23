@@ -4,7 +4,7 @@ Esta es la documentación completa de la API REST para su uso en el frontend. In
 
 **Base URL:** `http://localhost:8000` (desarrollo) | `https://api.findmyworker.com` (producción)
 
-**Última actualización:** 2026-02-13
+**Última actualización:** 2026-02-23
 
 ---
 
@@ -24,8 +24,7 @@ Esta es la documentación completa de la API REST para su uso en el frontend. In
 12. [Rate Limiting](#12-rate-limiting)
 13. [Paginación](#13-paginación)
 14. [Notas Importantes](#14-notas-importantes)
-15. [Ejemplos de Integración](#15-ejemplos-de-integración)
-16. [Contacto y Soporte](#16-contacto-y-soporte)
+15. [Contacto y Soporte](#15-contacto-y-soporte)
 
 ---
 
@@ -126,6 +125,150 @@ POST /api/auth/refresh/
 
 ---
 
+### 1.4 Cambiar Contraseña
+
+```http
+POST /api/auth/change-password/
+```
+
+**Headers:** `Authorization: Bearer {token}` (requiere autenticación)
+
+**Request Body:**
+
+```json
+{
+  "old_password": "contraseña_actual",
+  "new_password": "nueva_contraseña_segura",
+  "confirm_password": "nueva_contraseña_segura"
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "detail": "Contraseña actualizada exitosamente."
+}
+```
+
+**Errores comunes:**
+
+- **400 Bad Request** - Contraseña actual incorrecta:
+
+  ```json
+  {
+    "old_password": ["La contraseña actual es incorrecta."]
+  }
+  ```
+- **400 Bad Request** - Contraseñas no coinciden:
+
+  ```json
+  {
+    "confirm_password": ["Las contraseñas no coinciden."]
+  }
+  ```
+- **400 Bad Request** - Nueva contraseña igual a la actual:
+
+  ```json
+  {
+    "new_password": ["La nueva contraseña debe ser diferente a la actual."]
+  }
+  ```
+- **400 Bad Request** - Contraseña muy corta:
+
+  ```json
+  {
+    "new_password": ["Ensure this field has at least 8 characters."]
+  }
+  ```
+
+---
+
+### 1.5 Solicitar Reset de Contraseña
+
+```http
+POST /api/auth/password-reset/
+```
+
+**Público** - No requiere autenticación
+
+**Request Body:**
+
+```json
+{
+  "email": "usuario@example.com"
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "detail": "Si el email existe, recibirás instrucciones para resetear tu contraseña.",
+  "dev_token": "abc123...",  // SOLO EN DESARROLLO - Remover en producción
+  "dev_uid": "MQ"             // SOLO EN DESARROLLO - Remover en producción
+}
+```
+
+**Notas importantes:**
+
+- Por seguridad, siempre retorna 200 OK aunque el email no exista
+- En producción, el token se envía por email (pendiente de implementación)
+- `dev_token` y `dev_uid` solo aparecen en desarrollo para testing
+
+---
+
+### 1.6 Confirmar Reset de Contraseña
+
+```http
+POST /api/auth/password-reset-confirm/
+```
+
+**Público** - No requiere autenticación
+
+**Request Body:**
+
+```json
+{
+  "token": "token_recibido_por_email",
+  "new_password": "nueva_contraseña_segura",
+  "confirm_password": "nueva_contraseña_segura"
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "detail": "Contraseña restablecida exitosamente."
+}
+```
+
+**Errores comunes:**
+
+- **400 Bad Request** - Token inválido o expirado:
+
+  ```json
+  {
+    "detail": "Token inválido o expirado."
+  }
+  ```
+- **400 Bad Request** - Contraseñas no coinciden:
+
+  ```json
+  {
+    "confirm_password": ["Las contraseñas no coinciden."]
+  }
+  ```
+
+**Notas:**
+
+- El token solo es válido una vez
+- Los tokens expiran cuando el usuario cambia su contraseña
+- Usuarios desactivados no pueden resetear contraseña
+
+---
+
 ## 2. Usuarios
 
 ### 2.1 Obtener Perfil Actual
@@ -145,9 +288,24 @@ GET /api/users/me/
   "first_name": "Juan",
   "last_name": "Pérez",
   "role": "CLIENT",
-  "avatar": "http://example.com/media/avatars/juan.jpg"
+  "avatar": "http://example.com/media/avatars/juan.jpg",
+  "phone_number": "+52 333 123 4567",
+  "address": "Calle Principal 123",
+  "city": "Guadalajara",
+  "state": "Jalisco",
+  "country": "México",
+  "postal_code": "44100"
 }
 ```
+
+**Nuevos campos de contacto (todos opcionales):**
+
+- `phone_number` (string): Número de teléfono
+- `address` (string): Dirección física
+- `city` (string): Ciudad
+- `state` (string): Estado/Provincia
+- `country` (string): País (default: "México")
+- `postal_code` (string): Código postal
 
 ---
 
@@ -165,11 +323,29 @@ PATCH /api/users/me/
 ```json
 {
   "first_name": "Juan Carlos",
-  "avatar": "http://..."
+  "last_name": "Pérez López",
+  "phone_number": "+52 333 123 4567",
+  "address": "Calle Principal 123, Apt 5B",
+  "city": "Guadalajara",
+  "state": "Jalisco",
+  "country": "México",
+  "postal_code": "44100"
 }
 ```
 
 **Response (200 OK):** Mismo formato que GET
+
+**Campos de solo lectura (no se pueden modificar):**
+
+- `id`
+- `email`
+- `role`
+
+**Notas:**
+
+- Todos los campos de contacto son opcionales
+- Puedes actualizar solo los campos que necesites con PATCH
+- El avatar se puede subir como archivo multipart/form-data
 
 ---
 
@@ -313,10 +489,10 @@ POST /api/users/workers/portfolio/
 
 **Request Body (Form Data):**
 
-| Campo           | Tipo    | Requerido | Descripción                                                     |
-| --------------- | ------- | --------- | ---------------------------------------------------------------- |
-| `title`       | string  | ✅        | Título del proyecto (max 255 caracteres)                        |
-| `description` | string  | ❌        | Descripción detallada del proyecto                              |
+| Campo           | Tipo    | Requerido | Descripción                                                    |
+| --------------- | ------- | --------- | --------------------------------------------------------------- |
+| `title`       | string  | ✅        | Título del proyecto (max 255 caracteres)                       |
+| `description` | string  | ❌        | Descripción detallada del proyecto                             |
 | `image`       | file    | ✅        | Imagen del proyecto (max 5MB, JPG/PNG/WEBP)                     |
 | `order`       | integer | ❌        | ID de orden completada (solo órdenes COMPLETED del trabajador) |
 
@@ -626,12 +802,12 @@ function PortfolioUploadModal() {
     formData.append('title', title);
     formData.append('description', description);
     formData.append('image', imageFile);
-    
+  
     // Asociar orden si se seleccionó (trabajo verificado)
     if (selectedOrder) {
       formData.append('order', selectedOrder.id);
     }
-    
+  
     // POST request...
   };
 
@@ -640,7 +816,7 @@ function PortfolioUploadModal() {
       <input type="text" placeholder="Título" />
       <textarea placeholder="Descripción" />
       <input type="file" accept="image/*" />
-      
+    
       {/* Selector de orden (opcional) */}
       <select onChange={(e) => setSelectedOrder(availableOrders[e.target.value])}>
         <option value="">Trabajo externo (no verificado)</option>
@@ -650,7 +826,7 @@ function PortfolioUploadModal() {
           </option>
         ))}
       </select>
-      
+    
       <button onClick={handleSubmit}>Subir</button>
     </div>
   );
@@ -743,7 +919,7 @@ async function loadWorkerPortfolio(workerId) {
 
 Sistema de búsqueda semántica basado en Machine Learning (TF-IDF) que analiza biografías de trabajadores.
 
-### 4.1 Búsqueda Semántica
+### 5.1 Búsqueda Semántica
 
 ```http
 POST /api/users/workers/recommend/
@@ -864,7 +1040,7 @@ POST /api/users/workers/recommend/
 
 ---
 
-### 4.2 Health Check del Sistema IA
+### 5.2 Health Check del Sistema IA
 
 ```http
 GET /api/users/workers/recommendation-health/
@@ -898,7 +1074,7 @@ GET /api/users/workers/recommendation-health/
 
 ---
 
-### 4.3 Analytics (Solo Admins)
+### 5.3 Analytics (Solo Admins)
 
 ```http
 GET /api/users/workers/recommendation-analytics/?days=30
@@ -1065,7 +1241,7 @@ GET /api/orders/{id}/price-summary/
 
 ## 7. Registro de Horas
 
-### 6.1 Listar Horas de una Orden
+### 7.1 Listar Horas de una Orden
 
 ```http
 GET /api/orders/{order_id}/work-hours/
@@ -1093,7 +1269,7 @@ GET /api/orders/{order_id}/work-hours/
 
 ---
 
-### 6.2 Registrar Horas
+### 7.2 Registrar Horas
 
 ```http
 POST /api/orders/{order_id}/work-hours/
@@ -1113,7 +1289,7 @@ POST /api/orders/{order_id}/work-hours/
 
 ---
 
-### 6.3 Aprobar Horas
+### 7.3 Aprobar Horas
 
 ```http
 POST /api/orders/{order_id}/work-hours/{id}/approve/
@@ -1135,7 +1311,7 @@ POST /api/orders/{order_id}/work-hours/{id}/approve/
 
 ## 8. Mensajería
 
-### 7.1 Listar Mensajes de Orden
+### 8.1 Listar Mensajes de Orden
 
 ```http
 GET /api/orders/{order_id}/messages/
@@ -1164,7 +1340,7 @@ GET /api/orders/{order_id}/messages/
 
 ---
 
-### 7.2 Enviar Mensaje
+### 8.2 Enviar Mensaje
 
 ```http
 POST /api/orders/{order_id}/messages/
@@ -1186,7 +1362,7 @@ POST /api/orders/{order_id}/messages/
 
 ## 9. Reseñas
 
-### 8.1 Crear Reseña
+### 9.1 Crear Reseña
 
 ```http
 POST /api/orders/{order_id}/review/
@@ -1225,7 +1401,7 @@ POST /api/orders/{order_id}/review/
 
 ---
 
-### 8.2 Listar Reseñas de Trabajador
+### 9.2 Listar Reseñas de Trabajador
 
 ```http
 GET /api/orders/workers/{worker_id}/reviews/
@@ -1261,7 +1437,7 @@ GET /api/orders/workers/{worker_id}/reviews/
 
 ---
 
-### 8.3 Obtener Reseña de Orden
+### 9.3 Obtener Reseña de Orden
 
 ```http
 GET /api/orders/{order_id}/review/
@@ -1273,7 +1449,7 @@ GET /api/orders/{order_id}/review/
 
 ---
 
-### 8.4 Listar Todas las Reseñas (Público)
+### 9.4 Listar Todas las Reseñas (Público)
 
 ```http
 GET /api/reviews/
@@ -1445,7 +1621,6 @@ Endpoints que retornan listas usan paginación estándar:
 - **Usar `recommendation_details`** para análisis avanzado
 
 ---
-
 
 ## 15. Contacto y Soporte
 
