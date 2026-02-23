@@ -10,7 +10,10 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'avatar']
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'role', 'avatar',
+            'phone_number', 'address', 'city', 'state', 'country', 'postal_code'
+        ]
         read_only_fields = ['id', 'role', 'email']
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -603,3 +606,118 @@ class WorkerProfileWithPortfolioSerializer(WorkerProfileSerializer):
     def get_portfolio_count(self, obj):
         """Retorna cantidad total de items de portfolio."""
         return obj.portfolio_items.count()
+
+
+# ============================================================================
+# SERIALIZERS PARA GESTIÓN DE CONTRASEÑA
+# ============================================================================
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """
+    Serializer para cambio de contraseña de usuario autenticado.
+    
+    Requiere la contraseña actual para validación de seguridad.
+    """
+    old_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={'input_type': 'password'},
+        help_text="Contraseña actual del usuario"
+    )
+    new_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        min_length=8,
+        style={'input_type': 'password'},
+        help_text="Nueva contraseña (mínimo 8 caracteres)"
+    )
+    confirm_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={'input_type': 'password'},
+        help_text="Confirmación de nueva contraseña"
+    )
+    
+    def validate_old_password(self, value):
+        """Validar que la contraseña actual sea correcta."""
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError(_("La contraseña actual es incorrecta."))
+        return value
+    
+    def validate(self, data):
+        """Validar que las contraseñas nuevas coincidan."""
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({
+                "confirm_password": _("Las contraseñas no coinciden.")
+            })
+        
+        # Validar que la nueva contraseña sea diferente a la actual
+        if data['old_password'] == data['new_password']:
+            raise serializers.ValidationError({
+                "new_password": _("La nueva contraseña debe ser diferente a la actual.")
+            })
+        
+        return data
+    
+    def save(self, **kwargs):
+        """Guardar la nueva contraseña."""
+        user = self.context['request'].user
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+        return user
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """
+    Serializer para solicitar reset de contraseña.
+    
+    Genera un token de reset y envía email al usuario (cuando se implemente).
+    """
+    email = serializers.EmailField(
+        required=True,
+        help_text="Email del usuario que solicita reset de contraseña"
+    )
+    
+    def validate_email(self, value):
+        """Validar que el email exista en el sistema."""
+        try:
+            User.objects.get(email=value)
+        except User.DoesNotExist:
+            # Por seguridad, no revelamos si el email existe o no
+            # Retornamos el mismo mensaje de éxito
+            pass
+        return value
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """
+    Serializer para confirmar reset de contraseña con token.
+    
+    Valida el token y establece la nueva contraseña.
+    """
+    token = serializers.CharField(
+        required=True,
+        help_text="Token de reset recibido por email"
+    )
+    new_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        min_length=8,
+        style={'input_type': 'password'},
+        help_text="Nueva contraseña (mínimo 8 caracteres)"
+    )
+    confirm_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={'input_type': 'password'},
+        help_text="Confirmación de nueva contraseña"
+    )
+    
+    def validate(self, data):
+        """Validar que las contraseñas coincidan."""
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({
+                "confirm_password": _("Las contraseñas no coinciden.")
+            })
+        return data

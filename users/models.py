@@ -19,6 +19,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(max_length=50, choices=Role.choices, default=Role.CLIENT)
     
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
+    
+    # Contact Information
+    phone_number = models.CharField(_("Phone Number"), max_length=20, blank=True)
+    address = models.CharField(_("Address"), max_length=255, blank=True)
+    city = models.CharField(_("City"), max_length=100, blank=True)
+    state = models.CharField(_("State/Province"), max_length=100, blank=True)
+    country = models.CharField(_("Country"), max_length=100, blank=True, default="México")
+    postal_code = models.CharField(_("Postal Code"), max_length=10, blank=True)
 
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)

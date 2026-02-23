@@ -12,6 +12,9 @@ Organized into focused modules:
 from .auth_views import (
     RegisterView,
     CustomTokenObtainPairView,
+    ChangePasswordView,
+    PasswordResetRequestView,
+    PasswordResetConfirmView,
 )
 
 # User Management
@@ -36,6 +39,9 @@ __all__ = [
     # Auth
     'RegisterView',
     'CustomTokenObtainPairView',
+    'ChangePasswordView',
+    'PasswordResetRequestView',
+    'PasswordResetConfirmView',
     # Users
     'ManageUserView',
     'ManageWorkerProfileView',
