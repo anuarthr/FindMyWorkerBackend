@@ -60,25 +60,31 @@ fi
 
 # Verificar modelo TF-IDF entrenado
 echo "🔍 Verificando modelo de recomendación..."
-python -c "from django.core.cache import cache; cache.get('recommendation_model_data')" > /dev/null 2>&1
-CACHE_CHECK=$?
 
-# Si no hay modelo en cache, verificar si hay trabajadores para entrenar
-WORKER_COUNT=$(python manage.py shell -c "from users.models import WorkerProfile; print(WorkerProfile.objects.filter(bio__isnull=False, bio__gt='').count())" 2>/dev/null | tail -n 1)
+# Verificar si hay trabajadores con biografías
+WORKER_COUNT=$(python manage.py shell -c "from users.models import WorkerProfile; print(WorkerProfile.objects.exclude(bio='').count())" 2>/dev/null | tail -n 1)
 
 if [ "$WORKER_COUNT" = "0" ] || [ -z "$WORKER_COUNT" ]; then
     echo "⚠️  No hay trabajadores con biografías. El sistema de recomendación requiere datos."
-    echo "   Puedes agregar trabajadores manualmente o continuar sin recomendaciones."
-elif [ $CACHE_CHECK -ne 0 ] || [ -z "$(redis-cli -n 1 GET ':1:recommendation_model_data' 2>/dev/null)" ]; then
-    echo "⚠️  Modelo no entrenado. Entrenando con $WORKER_COUNT trabajadores..."
-    python manage.py train_recommendation_model > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        echo "✅ Modelo de recomendación entrenado"
-    else
-        echo "⚠️  Error al entrenar modelo. Continuando sin cache..."
-    fi
+    echo "   Puedes agregar trabajadores manualmente en: http://localhost:8000/admin/"
+    echo "   O continuar sin recomendaciones (búsqueda básica funcionará)."
 else
-    echo "✅ Modelo de recomendación disponible ($WORKER_COUNT trabajadores)"
+    # Verificar si el modelo está en Redis cache
+    MODEL_EXISTS=$(redis-cli -n 1 EXISTS ':1:recommendation_model_data' 2>/dev/null)
+    
+    if [ "$MODEL_EXISTS" = "0" ] || [ -z "$MODEL_EXISTS" ]; then
+        echo "⚠️  Modelo no encontrado en cache. Entrenando con $WORKER_COUNT trabajadores..."
+        python manage.py train_recommendation_model
+        
+        if [ $? -eq 0 ]; then
+            echo "✅ Modelo de recomendación entrenado exitosamente"
+        else
+            echo "❌ Error al entrenar modelo. Revisa los logs arriba."
+            echo "   El sistema continuará pero las recomendaciones IA no funcionarán."
+        fi
+    else
+        echo "✅ Modelo de recomendación disponible en cache ($WORKER_COUNT trabajadores)"
+    fi
 fi
 
 # Iniciar servidor
