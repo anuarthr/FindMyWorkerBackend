@@ -1,9 +1,3 @@
-"""
-Recommendation Response Presenter.
-
-Handles the presentation layer for recommendation results.
-Transforms ML engine output into API-friendly response format.
-"""
 from typing import List, Dict, Any
 from decimal import Decimal
 

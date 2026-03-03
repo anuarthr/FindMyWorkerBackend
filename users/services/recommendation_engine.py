@@ -1,31 +1,3 @@
-"""
-Recommendation Engine para FindMyWorker - Sistema de Búsqueda Semántica Multiidioma
-
-Implementa búsqueda semántica usando TF-IDF (Term Frequency-Inverse Document Frequency)
-con estrategias híbridas para recomendación de trabajadores.
-Soporta búsquedas en INGLÉS y ESPAÑOL.
-
-Estrategias disponibles:
-    - 'tfidf': Similitud coseno pura basada en contenido (baseline)
-    - 'fallback': Geolocalización + Rating (sin ML, estrategia tradicional)
-    - 'hybrid': Score combinado (50% tfidf + 30% rating + 20% proximidad)
-
-Características:
-    - ✅ Búsquedas multiidioma (inglés + español)
-    - ✅ Stopwords personalizadas del dominio de servicios (ambos idiomas)
-    - ✅ Expansión de sinónimos para mejorar recall (ambos idiomas)
-    - ✅ Explicabilidad (XAI): keywords matched + score breakdown
-    - ✅ Cache Redis con TTL 24h para vectores TF-IDF
-    - ✅ Invalidación inteligente cuando se actualizan perfiles
-
-Ejemplos de búsqueda:
-    Inglés: "Need plumber to fix urgent leak in bathroom"
-    Español: "Necesito plomero para reparar fuga urgente en baño"
-
-Autor: FindMyWorker Team
-Fecha: Enero 2026
-"""
-
 import re
 import logging
 import time
