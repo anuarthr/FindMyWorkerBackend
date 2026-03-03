@@ -2,7 +2,7 @@ import logging
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.db.models import Avg
-from .models import WorkHoursLog, Review
+from .models import WorkHoursLog, Review, ServiceOrder
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,22 @@ def auto_change_order_status(sender, instance, created, **kwargs):
             order.status = 'IN_ESCROW'
             order.save()
             logger.info(f"✅ Orden #{order.id} cambiada automáticamente a IN_ESCROW")
+
+
+@receiver(post_save, sender=ServiceOrder)
+def invalidate_dashboard_cache_on_order_change(sender, instance, created, **kwargs):
+    """
+    Invalida el caché del dashboard administrativo cuando se crea o actualiza una orden.
+    
+    Esto garantiza que las métricas de transacciones (total de órdenes, por estado,
+    ingresos, tendencias) se mantengan actualizadas en el dashboard.
+    """
+    # Import here to avoid circular dependency
+    from users.services.dashboard_service import DashboardService
+    
+    DashboardService.invalidate_cache()
+    if created:
+        logger.info(f"Dashboard cache invalidated: new order #{instance.id} created")
 
 
 @receiver(post_save, sender=Review)

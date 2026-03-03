@@ -721,3 +721,78 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
                 "confirm_password": _("Las contraseñas no coinciden.")
             })
         return data
+
+
+# ============================================================================
+# DASHBOARD SERIALIZERS (HU8)
+# ============================================================================
+
+class GrowthSerializer(serializers.Serializer):
+    """Serializer para métricas de crecimiento temporal de usuarios."""
+    last_30_days = serializers.IntegerField(
+        help_text="Número de usuarios registrados en los últimos 30 días"
+    )
+    last_7_days = serializers.IntegerField(
+        help_text="Número de usuarios registrados en los últimos 7 días"
+    )
+
+
+class UserStatisticsSerializer(serializers.Serializer):
+    """Serializer para estadísticas de usuarios registrados."""
+    total = serializers.IntegerField(
+        help_text="Total de usuarios registrados en la plataforma"
+    )
+    by_role = serializers.DictField(
+        child=serializers.IntegerField(),
+        help_text="Distribución de usuarios por rol (ADMIN, CLIENT, WORKER, COMPANY)"
+    )
+    growth = GrowthSerializer(
+        help_text="Métricas de crecimiento temporal"
+    )
+
+
+class ProfessionStatSerializer(serializers.Serializer):
+    """Serializer para estadísticas de profesiones."""
+    profession = serializers.CharField(
+        help_text="Nombre de la profesión"
+    )
+    worker_count = serializers.IntegerField(
+        help_text="Número de trabajadores con esta profesión"
+    )
+
+
+class TransactionStatisticsSerializer(serializers.Serializer):
+    """Serializer para estadísticas de transacciones y órdenes."""
+    total_orders = serializers.IntegerField(
+        help_text="Total de órdenes de servicio en la plataforma"
+    )
+    by_status = serializers.DictField(
+        help_text="Distribución de órdenes por estado con conteo e ingresos"
+    )
+    revenue_trend = serializers.ListField(
+        help_text="Tendencia mensual de órdenes e ingresos (últimos 6 meses)"
+    )
+    platform_commission_10pct = serializers.CharField(
+        help_text="Estimación de comisión de plataforma (10% de órdenes completadas)"
+    )
+
+
+class DashboardMetricsSerializer(serializers.Serializer):
+    """
+    Serializer principal para el dashboard administrativo.
+    
+    Agrupa todas las métricas del tablero de control:
+        - user_statistics: Métricas de usuarios
+        - profession_statistics: Profesiones más demandadas
+        - transaction_statistics: Métricas de órdenes y transacciones
+    """
+    user_statistics = UserStatisticsSerializer(
+        help_text="Estadísticas de usuarios registrados"
+    )
+    profession_statistics = ProfessionStatSerializer(
+        many=True,
+        help_text="Top 10 profesiones más demandadas"
+    )
+    transaction_statistics = TransactionStatisticsSerializer(
+        help_text="Métricas de órdenes y transacciones"
+    )
