@@ -5,6 +5,8 @@ from .views import (
     WorkerRecommendationView,
     RecommendationAnalyticsView,
     RecommendationHealthView,
+    # Dashboard Administrativo (HU8)
+    AdminDashboardView,
 )
 from .views.portfolio_views import (
     MyPortfolioListCreateView,
@@ -63,5 +65,16 @@ urlpatterns = [
         'workers/portfolio/<int:pk>/',
         PortfolioItemDetailView.as_view(),
         name='portfolio-item-detail'
+    ),
+    
+    # ============================================================================
+    # TABLERO DE CONTROL ADMINISTRATIVO (HU8)
+    # ============================================================================
+    
+    # Dashboard con métricas clave para administradores
+    path(
+        'admin/dashboard/',
+        AdminDashboardView.as_view(),
+        name='admin-dashboard'
     ),
 ]
