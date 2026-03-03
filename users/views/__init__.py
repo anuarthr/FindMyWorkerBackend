@@ -35,6 +35,11 @@ from .analytics_views import (
     RecommendationHealthView,
 )
 
+# Admin Dashboard
+from .admin_views import (
+    AdminDashboardView,
+)
+
 __all__ = [
     # Auth
     'RegisterView',
@@ -51,4 +56,6 @@ __all__ = [
     # Analytics
     'RecommendationAnalyticsView',
     'RecommendationHealthView',
+    # Admin Dashboard
+    'AdminDashboardView',
 ]
