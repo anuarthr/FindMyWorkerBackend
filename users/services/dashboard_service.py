@@ -144,7 +144,7 @@ class DashboardService:
                 for entry in by_status
             },
             "revenue_trend": revenue_trend,
-            "platform_commission_10pct": str(round(platform_commission * 0.10, 2)),
+            "platform_commission_10pct": str(round(platform_commission / 10, 2)),
         }
 
     @classmethod
