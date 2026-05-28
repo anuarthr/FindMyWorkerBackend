@@ -292,9 +292,11 @@ class RecommendationEngine:
                 'training_time_ms': 0
             }
         
-        # Obtener trabajadores con bio no vacía
+        # Hard filter (regla de negocio HU2 §4): solo trabajadores activos y
+        # verificados entran al corpus. Además requieren bio no vacía para TF-IDF.
         workers = WorkerProfile.objects.filter(
-            user__is_active=True
+            user__is_active=True,
+            is_verified=True,
         ).exclude(
             Q(bio='') | Q(bio__isnull=True)
         ).select_related('user')
@@ -320,7 +322,13 @@ class RecommendationEngine:
             raise ValueError("Corpus vacío después de preprocesamiento")
         
         # Entrenar TF-IDF
-        self.vectorizer = TfidfVectorizer(**self.TFIDF_CONFIG)
+        tfidf_config = dict(self.TFIDF_CONFIG)
+        # En corpus diminutos, un max_df fraccional puede descartar TODOS los
+        # términos (1 doc -> max_df=0.8 -> 0 docs permitidos < min_df=1, lo que
+        # hace fallar a scikit-learn). Lo relajamos para esos casos.
+        if len(corpus) < 3:
+            tfidf_config['max_df'] = 1.0
+        self.vectorizer = TfidfVectorizer(**tfidf_config)
         self.tfidf_matrix = self.vectorizer.fit_transform(corpus)
         self.worker_ids = worker_ids
         
@@ -609,6 +617,11 @@ class RecommendationEngine:
         """
         Aplica filtros adicionales al queryset de trabajadores.
         """
+        # Hard filter (regla de negocio HU2 §4): nunca recomendar trabajadores
+        # no verificados. Cubre la estrategia fallback (que no usa el corpus) y
+        # protege ante un modelo cacheado entrenado antes de un cambio de estado.
+        queryset = queryset.filter(is_verified=True)
+
         # Filtro por rating mínimo
         if 'min_rating' in filters:
             queryset = queryset.filter(average_rating__gte=filters['min_rating'])
@@ -637,7 +650,7 @@ class RecommendationEngine:
             'PLUMBER': ['plomero', 'fontanero', 'gasfiter', 'tubería', 'fuga'],
             'ELECTRICIAN': ['electricista', 'luz', 'electricidad', 'cableado'],
             'MASON': ['albañil', 'construcción', 'mampostería', 'obra'],
-            'PAINTER': ['pintor', 'pintura', 'barniz'],
+            'PAINTER': ['pintor', 'pintura', 'pintar', 'pintando', 'barniz'],
             'CARPENTER': ['carpintero', 'carpintería', 'madera', 'mueble'],
         }
         
