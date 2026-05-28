@@ -57,13 +57,17 @@ class RecommendationAPITestCase(TestCase):
                 password='test123',
                 role='WORKER'
             )
-            WorkerProfile.objects.create(
+            # El perfil ya existe (señal post_save de WORKER); lo actualizamos.
+            WorkerProfile.objects.update_or_create(
                 user=user,
-                profession=prof,
-                bio=bio,
-                years_experience=5 + i,
-                average_rating=Decimal('4.5'),
-                location=Point(-74.0721, 4.7110, srid=4326)
+                defaults=dict(
+                    is_verified=True,
+                    profession=prof,
+                    bio=bio,
+                    years_experience=5 + i,
+                    average_rating=Decimal('4.5'),
+                    location=Point(-74.0721, 4.7110, srid=4326),
+                ),
             )
     
     def test_recommend_endpoint_success(self):
@@ -221,11 +225,14 @@ class RecommendationRateLimitingTestCase(TestCase):
             password='test123',
             role='WORKER'
         )
-        WorkerProfile.objects.create(
+        WorkerProfile.objects.update_or_create(
             user=worker_user,
-            profession='PLUMBER',
-            bio='Plomero profesional con experiencia',
-            years_experience=5
+            defaults=dict(
+                is_verified=True,
+                profession='PLUMBER',
+                bio='Plomero profesional con experiencia',
+                years_experience=5,
+            ),
         )
     
     def test_rate_limiting_applied(self):
