@@ -1,0 +1,57 @@
+# ============================================================================
+# Render Blueprint for FindMyWorker Backend (Docker + Channels/ASGI).
+#
+# Database: external Supabase Postgres. Create the PostGIS extension once:
+#   create extension if not exists postgis;
+# Then set DATABASE_URL to the Supabase DIRECT connection (port 5432).
+#
+# Redis: a Render Key Value instance is provisioned below and wired into
+# REDIS_URL automatically. To use Upstash instead, delete the keyvalue service
+# and set REDIS_URL manually (rediss://...).
+# ============================================================================
+services:
+  - type: keyvalue
+    name: findmyworker-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []  # internal only
+
+  - type: web
+    name: findmyworker-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /admin/login/
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      # Render injects RENDER_EXTERNAL_HOSTNAME; set ALLOWED_HOSTS to your host.
+      - key: ALLOWED_HOSTS
+        value: "findmyworker-backend.onrender.com"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: "https://findmyworker-backend.onrender.com"
+      - key: CORS_ALLOWED_ORIGINS   # Añadir en dashboard cuando el frontend esté desplegado
+        sync: false
+      # External Supabase Postgres (direct connection, port 5432)
+      - key: DATABASE_URL
+        sync: false
+      # Wired automatically from the keyvalue service above
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: findmyworker-redis
+          property: connectionString
+      # --- S3 media storage (set USE_S3=False to skip and use WhiteNoise) ---
+      - key: USE_S3
+        value: "True"
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_S3_REGION_NAME
+        value: us-east-2

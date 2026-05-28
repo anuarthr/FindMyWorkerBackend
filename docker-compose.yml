@@ -20,3 +20,5 @@ services:
 
 volumes:
   postgres_data:
+    external: true
+    name: backend_postgres_data
