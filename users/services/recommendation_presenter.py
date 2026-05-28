@@ -41,7 +41,7 @@ class RecommendationPresenter:
             }
             
             # Add flat fields for frontend compatibility
-            worker.recommendation_score = result['score']
+            worker.recommendation_score = result['relevance_percentage']
             worker.matched_keywords = result['explanation'].get('matched_keywords', [])
             
             # Generate human-readable explanation

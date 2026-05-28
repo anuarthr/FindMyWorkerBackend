@@ -296,7 +296,7 @@ class PortfolioItem(models.Model):
     Reglas de negocio:
     - Solo rol WORKER puede crear items de portfolio
     - Las imágenes se comprimen automáticamente al subir
-    - Máximo 2MB por imagen (validado antes de comprimir)
+    - Máximo 5MB por imagen (validado antes de comprimir, ver users/constants.py)
     - Lectura pública, escritura solo para dueño
     - Puede relacionarse con órdenes completadas en la plataforma
     
@@ -324,7 +324,7 @@ class PortfolioItem(models.Model):
         _("Imagen"),
         upload_to=portfolio_image_upload_to,
         validators=portfolio_image_validators,
-        help_text=_("Foto antes/después o muestra del proyecto (máx 2MB)")
+        help_text=_("Foto antes/después o muestra del proyecto (máx 5MB)")
     )
     order = models.ForeignKey(
         "orders.ServiceOrder",

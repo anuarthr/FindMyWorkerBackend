@@ -28,6 +28,8 @@ from .hours_views import (
 # Messaging
 from .message_views import (
     order_messages,
+    chat_unread,
+    mark_chat_read,
 )
 
 # Reviews
@@ -53,6 +55,8 @@ __all__ = [
     'order_price_summary',
     # Messages
     'order_messages',
+    'chat_unread',
+    'mark_chat_read',
     # Reviews
     'CreateReviewView',
     'worker_reviews',

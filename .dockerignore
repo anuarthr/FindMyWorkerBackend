@@ -1,0 +1,32 @@
+# Virtualenvs / local Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local DB & media (never bake into the image)
+db.sqlite3
+media/
+staticfiles/
+
+# Logs
+logs/
+*.log
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+
+# Git / IDE / OS
+.git/
+.gitignore
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+
+# Docs are not needed in the runtime image
+docs/
+*.md

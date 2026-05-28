@@ -89,8 +89,9 @@ CORS_ORIGINS=http://localhost:5173
 
 ### Autenticación
 ```
-POST /api/users/register/
-POST /api/users/token/
+POST /api/auth/register/
+POST /api/auth/login/
+POST /api/auth/refresh/
 GET  /api/users/me/
 ```
 
@@ -235,14 +236,16 @@ curl http://localhost:8000/api/users/workers/recommendation-health/
 **Response:**
 ```json
 {
-  "status": "healthy",
+  "status": "ready",
   "model_trained": true,
-  "cache_connected": true,
-  "workers_count": 156,
-  "last_training": "2026-01-26T10:30:00Z",
+  "corpus_size": 156,
+  "cache_status": "connected",
+  "model_last_trained": "2026-01-26T10:30:00Z",
   "avg_response_time_ms": 48
 }
 ```
+
+> Estados: `ready` (listo), `not_trained`, `degraded`, `unhealthy`. Ver `docs/TECHNICAL_DECISIONS.md` TD-003.
 
 ### 5. Management Commands
 
@@ -459,7 +462,7 @@ media/
 - [x] **HU5:** Flujo de Contratación con Pagos
 - [x] **HU6:** Chat en Tiempo Real (WebSockets)
 - [x] **HU7:** Sistema de Reputación
-- [ ] **HU8:** Tablero de Control Administrativo (En desarrollo)
+- [x] **HU8:** Tablero de Control Administrativo
 
 ---
 ## �📚 Documentación Técnica

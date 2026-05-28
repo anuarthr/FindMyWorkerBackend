@@ -36,15 +36,20 @@ class RecommendationEngineTestCase(TestCase):
             password='test123',
             role='WORKER'
         )
-        worker1 = WorkerProfile.objects.create(
+        # El perfil ya lo crea la señal post_save al registrar un WORKER;
+        # lo actualizamos en vez de crear uno nuevo (evita colisión de unique).
+        worker1, _ = WorkerProfile.objects.update_or_create(
             user=user1,
-            profession='PLUMBER',
-            bio='Plomero profesional con 10 años de experiencia en reparación de fugas, '
-                'instalación de tuberías y mantenimiento de sistemas hidráulicos. '
-                'Atención de emergencias 24/7.',
-            years_experience=10,
-            average_rating=Decimal('4.8'),
-            location=Point(-74.0721, 4.7110, srid=4326)  # Bogotá
+            defaults=dict(
+                is_verified=True,
+                profession='PLUMBER',
+                bio='Plomero profesional con 10 años de experiencia en reparación de fugas, '
+                    'instalación de tuberías y mantenimiento de sistemas hidráulicos. '
+                    'Atención de emergencias 24/7.',
+                years_experience=10,
+                average_rating=Decimal('4.8'),
+                location=Point(-74.0721, 4.7110, srid=4326),  # Bogotá
+            ),
         )
         self.workers.append(worker1)
         
@@ -54,14 +59,17 @@ class RecommendationEngineTestCase(TestCase):
             password='test123',
             role='WORKER'
         )
-        worker2 = WorkerProfile.objects.create(
+        worker2, _ = WorkerProfile.objects.update_or_create(
             user=user2,
-            profession='ELECTRICIAN',
-            bio='Electricista certificado especializado en instalaciones residenciales y comerciales. '
-                'Reparación de fallas eléctricas, cableado, iluminación y sistemas de seguridad.',
-            years_experience=7,
-            average_rating=Decimal('4.5'),
-            location=Point(-74.0821, 4.7210, srid=4326)
+            defaults=dict(
+                is_verified=True,
+                profession='ELECTRICIAN',
+                bio='Electricista certificado especializado en instalaciones residenciales y comerciales. '
+                    'Reparación de fallas eléctricas, cableado, iluminación y sistemas de seguridad.',
+                years_experience=7,
+                average_rating=Decimal('4.5'),
+                location=Point(-74.0821, 4.7210, srid=4326),
+            ),
         )
         self.workers.append(worker2)
         
@@ -71,14 +79,17 @@ class RecommendationEngineTestCase(TestCase):
             password='test123',
             role='WORKER'
         )
-        worker3 = WorkerProfile.objects.create(
+        worker3, _ = WorkerProfile.objects.update_or_create(
             user=user3,
-            profession='PAINTER',
-            bio='Pintor profesional con experiencia en pintura interior y exterior. '
-                'Trabajos de calidad con garantía. Presupuestos sin compromiso.',
-            years_experience=5,
-            average_rating=Decimal('4.2'),
-            location=Point(-74.0921, 4.7310, srid=4326)
+            defaults=dict(
+                is_verified=True,
+                profession='PAINTER',
+                bio='Pintor profesional con experiencia en pintura interior y exterior. '
+                    'Trabajos de calidad con garantía. Presupuestos sin compromiso.',
+                years_experience=5,
+                average_rating=Decimal('4.2'),
+                location=Point(-74.0921, 4.7310, srid=4326),
+            ),
         )
         self.workers.append(worker3)
     
@@ -122,11 +133,46 @@ class RecommendationEngineTestCase(TestCase):
             "Debe expandir sinónimos de 'fuga'"
         )
         
-        # Test con palabra sin sinónimos
+        # Test con palabra sin sinónimos: devuelve el texto original sin cambios
         text = "palabra sin sinónimos definidos"
         expanded = self.engine.expand_synonyms(text)
-        self.assertEqual(text + ' ' + text, expanded)  # Solo duplica el original
+        self.assertEqual(text, expanded)
     
+    def test_unverified_worker_excluded(self):
+        """Hard filter (HU2 §4): un trabajador NO verificado no debe recomendarse."""
+        user = User.objects.create_user(
+            email='noverificado@test.com',
+            password='test123',
+            role='WORKER'
+        )
+        WorkerProfile.objects.update_or_create(
+            user=user,
+            defaults=dict(
+                is_verified=False,
+                profession='PLUMBER',
+                bio='Plomero no verificado con amplia experiencia en fugas y tuberías.',
+                years_experience=8,
+                average_rating=Decimal('5.0'),
+                location=Point(-74.0721, 4.7110, srid=4326),
+            ),
+        )
+
+        engine = RecommendationEngine()
+        engine.train_model(force_retrain=True)
+
+        # tfidf y fallback deben excluir al no verificado en ambos casos
+        for strategy in ('tfidf', 'fallback'):
+            results = engine.get_recommendations(
+                query='plomero fugas tuberías',
+                strategy=strategy,
+                top_n=10,
+            )
+            emails = [r['worker'].user.email for r in results]
+            self.assertNotIn(
+                'noverificado@test.com', emails,
+                f"El trabajador no verificado no debe aparecer (estrategia {strategy})"
+            )
+
     def test_train_model(self):
         """Test del entrenamiento del modelo TF-IDF."""
         # Entrenar modelo
@@ -361,12 +407,15 @@ class RecommendationEngineEdgeCasesTestCase(TestCase):
             password='test123',
             role='WORKER'
         )
-        WorkerProfile.objects.create(
+        WorkerProfile.objects.update_or_create(
             user=user,
-            profession='PLUMBER',
-            bio='Único plomero disponible en el sistema para testing.',
-            years_experience=5,
-            average_rating=Decimal('4.0')
+            defaults=dict(
+                is_verified=True,
+                profession='PLUMBER',
+                bio='Único plomero disponible en el sistema para testing.',
+                years_experience=5,
+                average_rating=Decimal('4.0'),
+            ),
         )
         
         engine = RecommendationEngine()
@@ -389,11 +438,14 @@ class RecommendationEngineEdgeCasesTestCase(TestCase):
             password='test123',
             role='WORKER'
         )
-        WorkerProfile.objects.create(
+        WorkerProfile.objects.update_or_create(
             user=user,
-            profession='PLUMBER',
-            bio='',  # Sin bio
-            years_experience=3
+            defaults=dict(
+                is_verified=True,
+                profession='PLUMBER',
+                bio='',  # Sin bio
+                years_experience=3,
+            ),
         )
         
         engine = RecommendationEngine()

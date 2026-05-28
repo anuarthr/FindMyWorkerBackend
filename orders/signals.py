@@ -27,10 +27,12 @@ def invalidate_dashboard_cache_on_order_change(sender, instance, created, **kwar
     """
     # Import here to avoid circular dependency
     from users.services.dashboard_service import DashboardService
-    
+
     DashboardService.invalidate_cache()
     if created:
-        logger.info(f"Dashboard cache invalidated: new order #{instance.id} created")
+        # Routine cache bookkeeping -> DEBUG (keeps INFO clean and avoids polluting
+        # logger-call assertions in the reputation signal tests).
+        logger.debug(f"Dashboard cache invalidated: new order #{instance.id} created")
 
 
 @receiver(post_save, sender=Review)

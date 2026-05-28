@@ -69,23 +69,25 @@ class WorkerProfileUpdateSerializer(serializers.ModelSerializer):
         return instance
 
 class WorkerProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True) 
+    user = UserSerializer(read_only=True)
     latitude = serializers.SerializerMethodField()
     longitude = serializers.SerializerMethodField()
+    recommendation_score = serializers.SerializerMethodField()
 
     class Meta:
         model = WorkerProfile
         fields = [
-            'id', 
+            'id',
             'user',
-            'profession', 
-            'bio', 
-            'years_experience', 
-            'hourly_rate', 
-            'is_verified', 
+            'profession',
+            'bio',
+            'years_experience',
+            'hourly_rate',
+            'is_verified',
             'average_rating',
-            'latitude', 
-            'longitude'
+            'latitude',
+            'longitude',
+            'recommendation_score',
         ]
         read_only_fields = ['id', 'user', 'is_verified', 'average_rating']
 
@@ -94,6 +96,10 @@ class WorkerProfileSerializer(serializers.ModelSerializer):
 
     def get_longitude(self, obj):
         return obj.location.x if obj.location else None
+
+    def get_recommendation_score(self, obj):
+        scores = self.context.get('recommendation_scores', {})
+        return scores.get(str(obj.id))
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     default_error_messages = {
@@ -239,7 +245,7 @@ class WorkerRecommendationSerializer(serializers.ModelSerializer):
     # Campos planos para compatibilidad con frontend
     recommendation_score = serializers.FloatField(
         read_only=True, 
-        help_text="Score normalizado de relevancia (0-1)"
+        help_text="Score de relevancia (0-100)"
     )
     matched_keywords = serializers.ListField(
         read_only=True, 
@@ -551,10 +557,10 @@ class PortfolioItemCreateSerializer(serializers.ModelSerializer):
                     _("No puedes asociar una orden que no te pertenece.")
                 )
             
-            # Validar que la orden esté completada
-            if order.status != 'COMPLETED':
+            # Validar que la orden esté en curso o completada
+            if order.status not in ('ACCEPTED', 'IN_ESCROW', 'COMPLETED'):
                 raise serializers.ValidationError(
-                    _("Solo puedes asociar órdenes completadas.")
+                    _("Solo puedes asociar órdenes aceptadas, en garantía o completadas.")
                 )
         
         return order

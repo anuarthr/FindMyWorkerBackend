@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext_lazy as _
+from django.db.models import Count
 
 from ..models import ServiceOrder, Message
 from ..serializers import MessageSerializer
@@ -71,3 +72,83 @@ def order_messages(request, pk):
         'limit_applied': limit,
         'messages': serializer.data
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def mark_chat_read(request, pk):
+    """
+    POST /api/orders/{id}/chat/mark-read/
+
+    Marks all unread messages in the order as read for the authenticated user.
+    Only accessible by the client or worker of the order.
+
+    Response:
+        {"marked_read": 3}
+    """
+    order = get_object_or_404(
+        ServiceOrder.objects.select_related('client', 'worker__user'),
+        pk=pk
+    )
+
+    if order.client != request.user and order.worker.user != request.user:
+        return Response(
+            {'detail': _('You do not have permission to access this chat.')},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    count = (
+        Message.objects
+        .filter(service_order=order, is_read=False)
+        .exclude(sender=request.user)
+        .update(is_read=True)
+    )
+
+    logger.debug(f"Marked {count} messages as read in order {pk} for {request.user.email}")
+    return Response({'marked_read': count})
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def chat_unread(request):
+    """
+    GET /api/orders/chat/unread/
+
+    Returns total unread message count and a per-order breakdown for the
+    authenticated user (works for both clients and workers).
+
+    Response:
+        {
+            "total": 5,
+            "orders": [
+                {"order_id": 12, "unread_count": 3},
+                {"order_id": 7,  "unread_count": 2}
+            ]
+        }
+    """
+    user = request.user
+
+    # All orders where the user is a participant
+    participant_order_ids = list(
+        ServiceOrder.objects.filter(client=user).values_list('id', flat=True)
+    ) + list(
+        ServiceOrder.objects.filter(worker__user=user).values_list('id', flat=True)
+    )
+
+    rows = (
+        Message.objects
+        .filter(service_order_id__in=participant_order_ids, is_read=False)
+        .exclude(sender=user)
+        .values('service_order_id')
+        .annotate(unread_count=Count('id'))
+    )
+
+    result = {row['service_order_id']: row['unread_count'] for row in rows}
+
+    return Response({
+        'total': sum(result.values()),
+        'orders': [
+            {'order_id': order_id, 'unread_count': count}
+            for order_id, count in result.items()
+        ]
+    })

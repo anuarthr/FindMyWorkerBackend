@@ -168,9 +168,12 @@ class WorkerRecommendationView(APIView):
     def _build_filters(self, validated_data: dict) -> dict:
         """Extract and build filters dict from validated request data."""
         filters = {}
-        
+
         if validated_data.get('min_rating'):
-            filters['min_rating'] = validated_data['min_rating']
+            # Cast Decimal -> float: filters is stored in RecommendationLog.filters_applied
+            # (a JSONField) and Decimal is not JSON-serializable. float is fine for the
+            # engine's `average_rating__gte` comparison.
+            filters['min_rating'] = float(validated_data['min_rating'])
         
         if validated_data.get('latitude') and validated_data.get('longitude'):
             filters['latitude'] = validated_data['latitude']

@@ -323,6 +323,13 @@ class Review(models.Model):
         help_text=_("Mínimo 10 caracteres"),
         verbose_name=_('Comment')
     )
+    image = models.ImageField(
+        upload_to='reviews/',
+        null=True,
+        blank=True,
+        verbose_name=_('Review Image'),
+        help_text=_("Foto opcional del trabajo realizado (máx. 5 MB)")
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name=_('Created At')

@@ -441,7 +441,8 @@ class ReviewListSerializer(serializers.ModelSerializer):
     reviewer = serializers.SerializerMethodField()
     service_order_id = serializers.IntegerField(source='service_order.id', read_only=True)
     can_edit = serializers.BooleanField(read_only=True)
-    
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Review
         fields = [
@@ -450,6 +451,7 @@ class ReviewListSerializer(serializers.ModelSerializer):
             'reviewer',
             'rating',
             'comment',
+            'image_url',
             'created_at',
             'can_edit'
         ]
@@ -465,6 +467,11 @@ class ReviewListSerializer(serializers.ModelSerializer):
             'last_name': reviewer.last_name
         }
 
+    def get_image_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
+
 
 class ReviewSerializer(serializers.ModelSerializer):
     """
@@ -475,7 +482,8 @@ class ReviewSerializer(serializers.ModelSerializer):
     worker = serializers.SerializerMethodField()
     service_order_id = serializers.IntegerField(source='service_order.id', read_only=True)
     can_edit = serializers.BooleanField(read_only=True)
-    
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Review
         fields = [
@@ -486,6 +494,7 @@ class ReviewSerializer(serializers.ModelSerializer):
             'worker',
             'rating',
             'comment',
+            'image_url',
             'created_at',
             'can_edit'
         ]
@@ -524,15 +533,22 @@ class ReviewSerializer(serializers.ModelSerializer):
             'average_rating': str(worker.average_rating)
         }
 
+    def get_image_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
+
 
 class ReviewCreateSerializer(serializers.ModelSerializer):
     """
     Serializador para crear reviews.
     Solo requiere rating y comment, el service_order viene de la URL.
+    La imagen es opcional (multipart/form-data).
     """
     class Meta:
         model = Review
-        fields = ['rating', 'comment']
+        fields = ['rating', 'comment', 'image']
+        extra_kwargs = {'image': {'required': False}}
     
     def validate_rating(self, value):
         """
