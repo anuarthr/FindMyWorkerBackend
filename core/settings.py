@@ -1,20 +1,27 @@
-from decouple import config
+from decouple import config, Csv
 from pathlib import Path
 from django.utils.translation import gettext_lazy as _
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# TODO: En producción, usar variable de entorno: config('SECRET_KEY')
-SECRET_KEY = 'django-insecure-3#&tpg%)le)2!0ss#roaj68hkoo*xljz$4fn0oug^wovvoq&dv'
+# Set SECRET_KEY in the environment for any non-local deployment.
+# The insecure default only exists so local dev works out of the box.
+SECRET_KEY = config(
+    'SECRET_KEY',
+    default='django-insecure-3#&tpg%)le)2!0ss#roaj68hkoo*xljz$4fn0oug^wovvoq&dv',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# En producción, cambiar a: DEBUG = config('DEBUG', default=False, cast=bool)
-DEBUG = True
+DEBUG = config('DEBUG', default=True, cast=bool)
 
-# Hosts permitidos para acceder a la aplicación
-# En producción, agregar el dominio real: config('ALLOWED_HOSTS', default='').split(',')
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'testserver']
+# Hosts permitidos para acceder a la aplicación.
+# En producción: ALLOWED_HOSTS=tu-app.onrender.com,api.tudominio.com
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='127.0.0.1,localhost,testserver',
+    cast=Csv(),
+)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -36,6 +43,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise serves collected static files in production (no-op when USE_S3).
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.locale.LocaleMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -65,16 +74,34 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': config('DB_NAME'),
-        'USER': config('DB_USER'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT', cast=int),
+# Database.
+# Prefer a single DATABASE_URL (e.g. Supabase / Render) when present, else fall
+# back to discrete DB_* vars. The GIS PostGIS engine is forced in both cases.
+DATABASE_URL = config('DATABASE_URL', default='')
+
+if DATABASE_URL:
+    import dj_database_url
+
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=config('DB_CONN_MAX_AGE', default=600, cast=int),
+            ssl_require=config('DB_SSL_REQUIRE', default=not DEBUG, cast=bool),
+        )
     }
-}
+    DATABASES['default']['ENGINE'] = 'django.contrib.gis.db.backends.postgis'
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.contrib.gis.db.backends.postgis',
+            'NAME': config('DB_NAME'),
+            'USER': config('DB_USER'),
+            'PASSWORD': config('DB_PASSWORD'),
+            'HOST': config('DB_HOST'),
+            'PORT': config('DB_PORT', cast=int),
+            'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=600, cast=int),
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -115,31 +142,43 @@ LOCALE_PATHS = [
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# Only include the project static dir if it actually exists, otherwise Django
+# (and collectstatic) emit staticfiles.W004.
 STATICFILES_DIRS = [
     BASE_DIR / 'static',
-]
+] if (BASE_DIR / 'static').exists() else []
 
 # ============================================================================
 # MEDIA FILES & AWS S3 CONFIGURATION (HU4)
 # ============================================================================
 
-import os
-
-# Toggle between S3 and local storage
-USE_S3 = os.getenv("USE_S3", "False") == "True"
+# Toggle between S3 and local storage. Use decouple (not os.getenv) so the
+# value is actually read from .env in local dev — os.getenv only sees real OS
+# env vars, not python-decouple's .env loader.
+USE_S3 = config('USE_S3', default=False, cast=bool)
 
 if USE_S3:
     # AWS S3 Configuration
-    AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-    AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
-    AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
+    AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
+    AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
+    AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='')
+    AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='us-east-1')
     AWS_S3_SIGNATURE_VERSION = "s3v4"
     AWS_S3_FILE_OVERWRITE = False
     AWS_QUERYSTRING_AUTH = False  # Public URLs without query string tokens
-    AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
-    
-    # Django 4.2+ STORAGES configuration
+    # Modern virtual-hosted style endpoint. The legacy "{bucket}.s3.amazonaws.com"
+    # only resolves for us-east-1; include the region so every bucket works.
+    # Allow override (e.g. CloudFront) via AWS_S3_CUSTOM_DOMAIN.
+    AWS_S3_CUSTOM_DOMAIN = config(
+        'AWS_S3_CUSTOM_DOMAIN',
+        default=f"{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com",
+    )
+    # Browser cache for static/media served from S3 (1 day).
+    AWS_S3_OBJECT_PARAMETERS = {"CacheControl": "max-age=86400"}
+
+    # Django 4.2+ STORAGES configuration.
+    # media -> user uploads (avatars, portfolio); static -> collectstatic output.
+    # Separate `location` prefixes keep them from colliding in the same bucket.
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3.S3Storage",
@@ -149,6 +188,7 @@ if USE_S3:
                 "custom_domain": AWS_S3_CUSTOM_DOMAIN,
                 "file_overwrite": AWS_S3_FILE_OVERWRITE,
                 "querystring_auth": AWS_QUERYSTRING_AUTH,
+                "location": "media",
             },
         },
         "staticfiles": {
@@ -157,24 +197,33 @@ if USE_S3:
                 "bucket_name": AWS_STORAGE_BUCKET_NAME,
                 "region_name": AWS_S3_REGION_NAME,
                 "custom_domain": AWS_S3_CUSTOM_DOMAIN,
-                "file_overwrite": False,
+                "file_overwrite": True,  # collectstatic overwrites existing assets
+                "location": "static",
             },
         },
     }
-    
-    # Media files URL (S3)
-    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
+
+    # Public base URLs (include the location prefix)
+    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
+    STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/static/"
 else:
-    # Local filesystem storage (development)
+    # Local filesystem media + WhiteNoise for static.
+    # Static uses the plain backend in DEBUG (avoids manifest lookups during
+    # runserver) and the compressed manifest backend in production.
+    _static_backend = (
+        "django.contrib.staticfiles.storage.StaticFilesStorage"
+        if DEBUG
+        else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    )
     STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
         },
         "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+            "BACKEND": _static_backend,
         },
     }
-    
+
     # Media files configuration (local)
     MEDIA_URL = "/media/"
     MEDIA_ROOT = BASE_DIR / "media"
@@ -195,29 +244,20 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    # Paginación
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 20,
-    # Configuración de throttling para prevenir abuso
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',  # 100 peticiones por hora para usuarios anónimos
-        'user': '1000/hour'  # 1000 peticiones por hora para usuarios autenticados
-    },
+    'PAGE_SIZE': 10,  # Default: 10 items por página
     # Formato de respuesta JSON por defecto
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',
     ),
-    # Parser por defecto
+    # Parser por defecto (las vistas con carga de archivos añaden MultiPartParser)
     'DEFAULT_PARSER_CLASSES': (
         'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.MultiPartParser',
+        'rest_framework.parsers.FormParser',
     ),
-    # Pagination settings
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10,  # Default: 10 items por página
-    # Throttling (Rate Limiting)
+    # Throttling (Rate Limiting) para prevenir abuso
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
@@ -256,21 +296,38 @@ SIMPLE_JWT = {
 
 ASGI_APPLICATION = 'core.asgi.application'
 
+# Redis is used both as the Channels transport and the Django cache (TF-IDF model).
+# A single REDIS_URL (managed Redis: Render Key Value, Upstash, etc., including
+# rediss:// with auth) takes precedence; otherwise fall back to host/port for
+# local development. Managed free tiers often expose only db 0 and forbid SELECT,
+# so URL mode shares one db and relies on key prefixes to stay separate.
+REDIS_URL = config('REDIS_URL', default='')
+
+if REDIS_URL:
+    _channel_hosts = [REDIS_URL]
+    _cache_location = REDIS_URL
+else:
+    _redis_host = config('REDIS_HOST', default='127.0.0.1')
+    _redis_port = config('REDIS_PORT', default=6379, cast=int)
+    _channel_hosts = [(_redis_host, _redis_port)]
+    _cache_location = f"redis://{_redis_host}:{_redis_port}/1"
+
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [(config('REDIS_HOST', default='127.0.0.1'), config('REDIS_PORT', default=6379, cast=int))],
+            'hosts': _channel_hosts,
+            'prefix': 'findmyworker:asgi',
         },
     },
 }
 
-# Configuración de CACHES para Django (Redis DB 1 - separado de Channels)
-# Usado por el sistema de recomendación para cachear el modelo TF-IDF
+# Configuración de CACHES para Django.
+# Usado por el sistema de recomendación para cachear el modelo TF-IDF.
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': f"redis://{config('REDIS_HOST', default='127.0.0.1')}:{config('REDIS_PORT', default=6379, cast=int)}/1",
+        'LOCATION': _cache_location,
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         },
@@ -279,13 +336,17 @@ CACHES = {
     }
 }
 
-# Configuración de CORS (Cross-Origin Resource Sharing)
-# Permite solicitudes desde estos orígenes
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Frontend desarrollo local (Vite)
-    "http://127.0.0.1:5173",
-    # En producción, agregar: "https://tu-dominio.com"
-]
+# Configuración de CORS (Cross-Origin Resource Sharing).
+# En producción: CORS_ALLOWED_ORIGINS=https://tu-frontend.com
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='http://localhost:5173,http://127.0.0.1:5173',
+    cast=Csv(),
+)
+
+# Orígenes confiables para CSRF (necesario para el admin de Django tras un proxy
+# HTTPS como Render). Debe incluir el esquema: https://tu-app.onrender.com
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 # Permitir cookies en peticiones CORS
 CORS_ALLOW_CREDENTIALS = True
@@ -351,16 +412,20 @@ LOGGING = {
 
 # Configuraciones de seguridad adicionales para producción
 if not DEBUG:
+    # Render/Heroku/etc. terminan TLS en un proxy y reenvían por HTTP interno.
+    # Sin esto, SECURE_SSL_REDIRECT entraría en un bucle de redirección infinito.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
     # Forzar HTTPS
-    SECURE_SSL_REDIRECT = True
+    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    
+
     # Protección HSTS (HTTP Strict Transport Security)
     SECURE_HSTS_SECONDS = 31536000  # 1 año
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    
+
     # Otras configuraciones de seguridad
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
