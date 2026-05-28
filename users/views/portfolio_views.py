@@ -37,7 +37,7 @@ class MyPortfolioListCreateView(generics.ListCreateAPIView):
     **Cuerpo (POST)**:
     - title (string, requerido, máx 255): Título del proyecto
     - description (string, opcional): Descripción detallada
-    - image (file, requerido, máx 2MB): Imagen JPG/PNG/WEBP
+    - image (file, requerido, máx 5MB): Imagen JPG/PNG/WEBP
     
     **Errores**:
     - 400: Imagen inválida (tamaño/formato), campos faltantes
@@ -122,11 +122,20 @@ class WorkerPortfolioListView(generics.ListAPIView):
     permission_classes = [permissions.AllowAny]
     
     def get_queryset(self):
-        """Retorna items de portfolio para el trabajador especificado."""
+        """Retorna items de portfolio para el trabajador especificado.
+
+        Acepta ?order_id= para filtrar evidencias de una orden concreta.
+        """
         worker_id = self.kwargs.get("worker_id")
-        return PortfolioItem.objects.filter(
+        qs = PortfolioItem.objects.filter(
             worker_id=worker_id
         ).select_related("worker", "worker__user", "order", "order__client")
+
+        order_id = self.request.query_params.get("order_id")
+        if order_id:
+            qs = qs.filter(order_id=order_id)
+
+        return qs
     
     def get_serializer_context(self):
         """Incluye request en contexto del serializer."""
