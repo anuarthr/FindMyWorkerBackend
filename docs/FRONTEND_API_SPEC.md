@@ -1204,14 +1204,22 @@ PATCH /api/orders/{id}/status/
 
 ```json
 {
-  "status": "IN_PROGRESS"
+  "status": "ACCEPTED"
 }
 ```
 
-**Permisos:**
+**Transiciones válidas (máquina de estados):**
 
-- Cliente: `PENDING` → `CANCELLED`
-- Trabajador: `PENDING` → `ACCEPTED`, `ACCEPTED` → `IN_PROGRESS`, `IN_PROGRESS` → `COMPLETED`
+| Desde | Hacia | Actor permitido |
+|-------|-------|-----------------|
+| `PENDING` | `ACCEPTED` | Trabajador |
+| `ACCEPTED` | `IN_ESCROW` | Cliente (simula pago en garantía) |
+| `IN_ESCROW` | `COMPLETED` | Cliente (libera el pago) |
+| `PENDING` o `ACCEPTED` | `CANCELLED` | Cliente o Trabajador |
+
+Cualquier otra transición devuelve `403 Forbidden`. No existe el estado
+`IN_PROGRESS`; los estados válidos son `PENDING`, `ACCEPTED`, `IN_ESCROW`,
+`COMPLETED`, `CANCELLED`.
 
 ---
 
@@ -1608,11 +1616,13 @@ Endpoints que retornan listas usan paginación estándar:
 - Razón: No hay corpus bilingüe, requiere traducción o biografías en ambos idiomas
 - Ver: `docs/TECHNICAL_DECISIONS.md` TD-001
 
-### Sinónimos NO Implementados
+### Sinónimos (Implementados, solo español)
 
-- El sistema NO expande sinónimos automáticamente
-- "plomero" NO busca "fontanero", "gasfiter"
-- Funcionalidad planificada para el futuro
+- El motor SÍ expande sinónimos automáticamente en el preprocesamiento
+- "plomero" también busca "fontanero", "gasfiter", "tubero", etc.
+- Ver el diccionario `SYNONYMS_ES` en `users/services/recommendation_engine.py`
+- Nota: aunque el motor incluye sinónimos/stopwords en inglés, el endpoint
+  rechaza `language="en"` (corpus solo en español). Ver TD-001.
 
 ### Campos Planos vs Detallados
 
