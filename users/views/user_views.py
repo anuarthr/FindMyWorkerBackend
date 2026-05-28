@@ -5,6 +5,7 @@ Handles user profile management and worker profile CRUD operations.
 """
 from rest_framework import generics, permissions, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.response import Response
 
 from ..models import WorkerProfile
@@ -18,11 +19,14 @@ from ..serializers import (
 class ManageUserView(generics.RetrieveUpdateAPIView):
     """
     GET/PATCH /api/users/me/
-    
+
     Retrieve or update the authenticated user's profile.
+    Accepts multipart/form-data so the avatar image can be uploaded
+    (the project-wide default parser is JSON only).
     """
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_object(self):
         return self.request.user
