@@ -6,6 +6,7 @@ Handles review creation and listing for completed orders.
 import logging
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 
@@ -26,26 +27,19 @@ logger = logging.getLogger(__name__)
 class CreateReviewView(generics.CreateAPIView):
     """
     POST /api/orders/{order_id}/review/
-    
-    Create a review for a completed order.
-    
+
+    Create a review for a completed order. Accepts multipart/form-data
+    (when including an image) or application/json (text-only).
+
     **Throttling**: 10 requests/hour per user.
-    
+
     **Restrictions**:
     - Only the order's client can create the review
     - Order must be in COMPLETED status
     - Only one review per order allowed (OneToOneField)
     - Rating must be between 1 and 5 stars
     - Comment must be at least 10 characters
-    
-    **Request Body**:
-    ```json
-    {
-        "rating": 5,
-        "comment": "Excellent work, very professional and punctual"
-    }
-    ```
-    
+
     **Errors**:
     - 400: Order not completed / Duplicate review / Validation failed
     - 403: User is not the order's client
@@ -55,6 +49,7 @@ class CreateReviewView(generics.CreateAPIView):
     serializer_class = ReviewCreateSerializer
     permission_classes = [permissions.IsAuthenticated, IsOrderClient]
     throttle_classes = [ReviewCreateThrottle]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def get_object(self):
         """Get the service order from URL to validate permissions."""
@@ -203,10 +198,11 @@ def list_reviews(request):
             },
             'rating': review.rating,
             'comment': review.comment,
+            'image_url': review.image.url if review.image else None,
             'created_at': review.created_at.isoformat(),
             'service_order_id': review.service_order.id
         })
-    
+
     # Prepare worker data
     worker_data = {
         'id': worker.id,
@@ -287,6 +283,7 @@ def get_order_review(request, order_id):
             },
             'rating': review.rating,
             'comment': review.comment,
+            'image_url': review.image.url if review.image else None,
             'created_at': review.created_at.isoformat(),
             'service_order_id': review.service_order.id
         }
