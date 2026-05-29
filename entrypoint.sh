@@ -14,6 +14,12 @@ python manage.py collectstatic --noinput
 
 # Best-effort model warm-up. Fails harmlessly on an empty DB (no workers yet)
 # or if Redis is briefly unavailable; the app boots either way.
+# Create superuser if DJANGO_SUPERUSER_EMAIL is set (one-time bootstrap)
+if [ -n "$DJANGO_SUPERUSER_EMAIL" ]; then
+    echo "==> Creating superuser (best-effort)"
+    python manage.py createsuperuser --noinput || echo "WARN: superuser already exists or creation skipped"
+fi
+
 echo "==> Training recommendation model (best-effort)"
 python manage.py train_recommendation_model || echo "WARN: model training skipped"
 
