@@ -20,6 +20,9 @@ if [ -n "$DJANGO_SUPERUSER_EMAIL" ]; then
     python manage.py createsuperuser --noinput || echo "WARN: superuser already exists or creation skipped"
 fi
 
+echo "==> Seeding demo data (best-effort)"
+python manage.py seed_demo || echo "WARN: demo seed skipped"
+
 echo "==> Training recommendation model (best-effort)"
 python manage.py train_recommendation_model || echo "WARN: model training skipped"
 
