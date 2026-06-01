@@ -27,5 +27,8 @@ echo "==> Training recommendation model (best-effort)"
 python manage.py train_recommendation_model || echo "WARN: model training skipped"
 
 PORT="${PORT:-8000}"
-echo "==> Starting uvicorn on 0.0.0.0:${PORT}"
-exec uvicorn core.asgi:application --host 0.0.0.0 --port "${PORT}" --proxy-headers --forwarded-allow-ips='*'
+# Daphne is the Channels reference ASGI server and serves HTTP *and* WebSocket.
+# (Plain uvicorn ships without a WebSocket implementation, so WS upgrades fall
+# through to the HTTP app and 404 — which broke real-time chat.)
+echo "==> Starting daphne on 0.0.0.0:${PORT}"
+exec daphne -b 0.0.0.0 -p "${PORT}" --proxy-headers core.asgi:application
