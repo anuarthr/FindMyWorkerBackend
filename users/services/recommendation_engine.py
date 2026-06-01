@@ -83,8 +83,42 @@ class RecommendationEngine:
         'also', 'available', 'additionally', 'furthermore'
     }
     
-    # Combinar stopwords de ambos idiomas
-    DOMAIN_STOPWORDS = DOMAIN_STOPWORDS_ES | DOMAIN_STOPWORDS_EN
+    # Palabras de petición ultra-comunes en queries (no aportan a la relevancia).
+    REQUEST_STOPWORDS = {
+        'necesito', 'necesitamos', 'busco', 'buscamos', 'buscando', 'quiero',
+        'queremos', 'requiero', 'requerimos', 'solicito', 'ocupo', 'ando',
+        'trabajador', 'trabajadora', 'persona', 'alguien', 'casa', 'hogar',
+        'need', 'want', 'looking', 'searching', 'someone', 'person', 'worker',
+    }
+
+    # Stopwords gramaticales estándar (español). Sin ellas, términos vacíos como
+    # "que", "lo", "por", "un", "muy" dejan de inflar la similitud TF-IDF.
+    STANDARD_STOPWORDS_ES = {
+        'de', 'la', 'que', 'el', 'en', 'y', 'a', 'los', 'del', 'se', 'las',
+        'por', 'un', 'para', 'con', 'una', 'su', 'al', 'lo', 'como', 'más',
+        'pero', 'sus', 'le', 'ya', 'o', 'porque', 'esta', 'entre', 'cuando',
+        'sin', 'sobre', 'me', 'hasta', 'donde', 'quien', 'desde', 'nos',
+        'uno', 'les', 'ni', 'ese', 'eso', 'ante', 'ellos', 'esto', 'mí',
+        'antes', 'unos', 'yo', 'otro', 'otra', 'él', 'esa', 'esos', 'esas',
+        'ella', 'estas', 'algo', 'mi', 'mis', 'tú', 'te', 'ti', 'tu', 'tus',
+        'muy', 'sea', 'si', 'sí', 'ha', 'han', 'he', 'fue', 'era', 'este',
+        'estos', 'es', 'un', 'una', 'del', 'que',
+    }
+
+    # Stopwords gramaticales estándar (inglés).
+    STANDARD_STOPWORDS_EN = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+        'of', 'with', 'by', 'from', 'as', 'this', 'that', 'these', 'those',
+        'it', 'its', 'be', 'been', 'being', 'who', 'whom', 'which', 'what',
+        'so', 'than', 'too', 'very', 'just', 'about', 'into', 'over', 'i',
+        'you', 'he', 'she', 'they', 'we', 'me', 'him', 'her', 'them',
+    }
+
+    # Combinar todas las stopwords (dominio + petición + gramaticales)
+    DOMAIN_STOPWORDS = (
+        DOMAIN_STOPWORDS_ES | DOMAIN_STOPWORDS_EN
+        | REQUEST_STOPWORDS | STANDARD_STOPWORDS_ES | STANDARD_STOPWORDS_EN
+    )
     
     # Sinónimos para expansión de queries (mejora recall)
     # ESPAÑOL
@@ -96,7 +130,13 @@ class RecommendationEngine:
         'carpintero': ['carpintería', 'madera', 'muebles'],
         'jardinero': ['jardinería', 'plantas', 'jardines', 'paisajismo'],
         'mecánico': ['mecánica', 'motor', 'auto', 'coche', 'vehículo'],
-        
+
+        # Verbos de acción que implican una profesión (el usuario suele escribir
+        # el verbo, no el oficio: "pintar mi casa" -> pintor).
+        'pintar': ['pintor', 'pintura'],
+        'construir': ['albañil', 'construcción'],
+        'cablear': ['electricista', 'cableado'],
+
         # Tipos de problemas
         'fuga': ['goteo', 'filtración', 'derrame', 'pérdida'],
         'roto': ['quebrado', 'dañado', 'averiado', 'rompió'],
@@ -137,11 +177,22 @@ class RecommendationEngine:
     # Combinar sinónimos de ambos idiomas
     SYNONYMS = {**SYNONYMS_ES, **SYNONYMS_EN}
     
-    # Pesos para estrategia híbrida (deben sumar 1.0)
+    # Pesos para estrategia híbrida (deben sumar 1.0).
+    # Cuando la query menciona un oficio, la coincidencia de categoría pesa fuerte
+    # para que un pintor gane una búsqueda de pintura por encima de la semántica.
     HYBRID_WEIGHTS = {
-        'tfidf_score': 0.5,      # 50% similitud semántica
-        'rating_boost': 0.3,     # 30% rating del trabajador
-        'proximity_boost': 0.2,  # 20% cercanía geográfica
+        'tfidf_score': 0.4,        # 40% similitud semántica
+        'profession_match': 0.3,   # 30% coincidencia de oficio/categoría
+        'rating_boost': 0.2,       # 20% rating del trabajador
+        'proximity_boost': 0.1,    # 10% cercanía geográfica
+    }
+    # Si la query no menciona un oficio, el peso de categoría se reparte de vuelta
+    # al esquema original (semántica/rating/proximidad) para no bajar los scores.
+    HYBRID_WEIGHTS_NO_PROFESSION = {
+        'tfidf_score': 0.5,
+        'profession_match': 0.0,
+        'rating_boost': 0.3,
+        'proximity_boost': 0.2,
     }
     
     # Configuración de TF-IDF
@@ -501,39 +552,60 @@ class RecommendationEngine:
         """
         # Obtener candidatos por TF-IDF
         tfidf_results = self._strategy_tfidf(processed_query, top_n * 2, filters)
-        
+
+        # Oficio implícito en la query (p.ej. "pintar mi casa" -> PAINTER). Si la
+        # query menciona un oficio se activa el peso de categoría; si no, se usa
+        # el esquema sin oficio para no penalizar búsquedas genéricas.
+        detected_profession = self._detect_profession(processed_query)
+        weights = (
+            self.HYBRID_WEIGHTS if detected_profession
+            else self.HYBRID_WEIGHTS_NO_PROFESSION
+        )
+
         # Calcular score híbrido para cada candidato
         hybrid_results = []
-        
+
         user_location = filters.get('latitude') and filters.get('longitude')
-        
+
         for result in tfidf_results:
             worker = result['worker']
             tfidf_score = result['score']
-            
+
             # Componente 1: TF-IDF (ya normalizado 0-1)
-            tfidf_component = tfidf_score * self.HYBRID_WEIGHTS['tfidf_score']
-            
-            # Componente 2: Rating normalizado
+            tfidf_component = tfidf_score * weights['tfidf_score']
+
+            # Componente 2: Coincidencia de oficio/categoría
+            profession_matches = (
+                detected_profession is not None
+                and worker.profession == detected_profession
+            )
+            profession_component = (
+                weights['profession_match'] if profession_matches else 0.0
+            )
+
+            # Componente 3: Rating normalizado
             rating_normalized = float(worker.average_rating) / 5.0
-            rating_component = rating_normalized * self.HYBRID_WEIGHTS['rating_boost']
-            
-            # Componente 3: Proximidad (si hay geolocalización)
+            rating_component = rating_normalized * weights['rating_boost']
+
+            # Componente 4: Proximidad (si hay geolocalización)
             proximity_component = 0
             distance_km = None
-            
+
             if user_location and worker.location:
                 user_point = Point(filters['longitude'], filters['latitude'], srid=4326)
                 distance_km = worker.location.distance(user_point) * 111  # Convertir a km aprox
-                
+
                 # Normalizar distancia (inversa): cercano = 1, lejano = 0
                 max_distance = filters.get('max_distance_km', 50)
                 proximity_normalized = max(0, 1 - (distance_km / max_distance))
-                proximity_component = proximity_normalized * self.HYBRID_WEIGHTS['proximity_boost']
-            
+                proximity_component = proximity_normalized * weights['proximity_boost']
+
             # Score híbrido final
-            hybrid_score = tfidf_component + rating_component + proximity_component
-            
+            hybrid_score = (
+                tfidf_component + profession_component
+                + rating_component + proximity_component
+            )
+
             hybrid_result = {
                 'worker': worker,
                 'score': hybrid_score,
@@ -543,6 +615,7 @@ class RecommendationEngine:
                     **result['explanation'],
                     'score_breakdown': {
                         'tfidf_score': round(tfidf_component, 3),
+                        'profession_boost': round(profession_component, 3),
                         'rating_boost': round(rating_component, 3),
                         'proximity_boost': round(proximity_component, 3),
                         'total': round(hybrid_score, 3),
