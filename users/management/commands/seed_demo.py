@@ -111,6 +111,11 @@ WORKERS = [
                 "review_rating": 4,
                 "review_comment": "Buen trabajo, muy puntual. Los contactos quedaron perfectamente instalados.",
             },
+            {
+                "description": "Revisión del tablero eléctrico y cambio de pastillas que se botan.",
+                "status": "IN_ESCROW",
+                "agreed_price": Decimal("1100.00"),
+            },
         ],
     },
     {
@@ -145,6 +150,11 @@ WORKERS = [
                 "agreed_price": Decimal("3500.00"),
                 "review_rating": 5,
                 "review_comment": "El resultado fue increíble, mejor de lo esperado. Miguel es muy detallista y dejó todo limpio al terminar.",
+            },
+            {
+                "description": "Pintar la fachada de la casa, dos plantas, color blanco hueso.",
+                "status": "ACCEPTED",
+                "agreed_price": Decimal("4200.00"),
             },
         ],
     },
@@ -280,12 +290,14 @@ class Command(BaseCommand):
                     },
                 )
 
-            if order_created and order_data["status"] == "ACCEPTED":
+            if order_created and order_data["status"] in ("ACCEPTED", "IN_ESCROW"):
                 Message.objects.create(
                     service_order=order,
                     sender=client,
                     content="Hola, ¿cuándo podría venir a revisar el trabajo?",
                 )
+                # Worker reply stays unread for the client, so the chat unread
+                # badge has something to show in the demo.
                 Message.objects.create(
                     service_order=order,
                     sender=user,
