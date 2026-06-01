@@ -310,7 +310,8 @@ class RecommendationHealthView(APIView):
                 health_data['avg_response_time_ms'] = round(avg_response, 2)
                 
                 if avg_response > 200:  # > 200ms is slow
-                    health_data['status'] = 'degraded'
+                    # Advisory only: a slow average (e.g. cold-start queries) does
+                    # not make the system unusable, so don't downgrade readiness.
                     health_data['recommendations'].append(
                         f'Tiempo de respuesta alto ({avg_response:.0f}ms). '
                         'Considerar reentrenar modelo o limpiar cache.'
@@ -324,7 +325,8 @@ class RecommendationHealthView(APIView):
             active_workers = WorkerProfile.objects.filter(user__is_active=True).count()
             
             if active_workers < 10:
-                health_data['status'] = 'degraded'
+                # Advisory only: a small corpus still serves recommendations, so
+                # keep the warning but don't downgrade readiness (the model works).
                 health_data['recommendations'].append(
                     f'Corpus pequeño ({active_workers} trabajadores). '
                     'Considerar agregar más datos.'
