@@ -296,45 +296,62 @@ SIMPLE_JWT = {
 
 ASGI_APPLICATION = 'core.asgi.application'
 
-# Redis is used both as the Channels transport and the Django cache (TF-IDF model).
-# A single REDIS_URL (managed Redis: Render Key Value, Upstash, etc., including
-# rediss:// with auth) takes precedence; otherwise fall back to host/port for
-# local development. Managed free tiers often expose only db 0 and forbid SELECT,
-# so URL mode shares one db and relies on key prefixes to stay separate.
+# Redis backs both the Channels transport and the Django cache (TF-IDF model).
+# It is OPTIONAL: on a single-instance deployment (Render free tier runs with
+# WEB_CONCURRENCY=1, i.e. one process) the in-memory channel layer and the
+# local-memory cache work reliably without an external Redis, removing a failure
+# point. Set USE_REDIS=True (and provide REDIS_URL) only when scaling to multiple
+# workers/instances, where the in-memory backends can't share state.
+USE_REDIS = config('USE_REDIS', default=False, cast=bool)
 REDIS_URL = config('REDIS_URL', default='')
 
-if REDIS_URL:
-    _channel_hosts = [REDIS_URL]
-    _cache_location = REDIS_URL
-else:
-    _redis_host = config('REDIS_HOST', default='127.0.0.1')
-    _redis_port = config('REDIS_PORT', default=6379, cast=int)
-    _channel_hosts = [(_redis_host, _redis_port)]
-    _cache_location = f"redis://{_redis_host}:{_redis_port}/1"
+if USE_REDIS:
+    # Managed free tiers often expose only db 0 and forbid SELECT, so URL mode
+    # shares one db and relies on key prefixes to stay separate.
+    if REDIS_URL:
+        _channel_hosts = [REDIS_URL]
+        _cache_location = REDIS_URL
+    else:
+        _redis_host = config('REDIS_HOST', default='127.0.0.1')
+        _redis_port = config('REDIS_PORT', default=6379, cast=int)
+        _channel_hosts = [(_redis_host, _redis_port)]
+        _cache_location = f"redis://{_redis_host}:{_redis_port}/1"
 
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': _channel_hosts,
-            'prefix': 'findmyworker:asgi',
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': _channel_hosts,
+                'prefix': 'findmyworker:asgi',
+            },
         },
-    },
-}
-
-# Configuración de CACHES para Django.
-# Usado por el sistema de recomendación para cachear el modelo TF-IDF.
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': _cache_location,
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        },
-        'KEY_PREFIX': 'findmyworker',
-        'TIMEOUT': 86400,  # Default: 24 horas
     }
-}
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': _cache_location,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            },
+            'KEY_PREFIX': 'findmyworker',
+            'TIMEOUT': 86400,  # Default: 24 horas
+        }
+    }
+else:
+    # In-memory backends — no external Redis required. Valid only for a single
+    # process; chat groups and the TF-IDF cache live in that process's memory.
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'findmyworker-locmem',
+            'TIMEOUT': 86400,  # Default: 24 horas
+        }
+    }
 
 # Configuración de CORS (Cross-Origin Resource Sharing).
 # En producción: CORS_ALLOWED_ORIGINS=https://tu-frontend.com
